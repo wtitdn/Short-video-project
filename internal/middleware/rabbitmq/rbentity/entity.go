@@ -17,6 +17,16 @@ type CommentWorker struct {
 	queue    string
 }
 
+type CommentEvent struct {
+	EventID    string    `json:"event_id"`
+	Action     string    `json:"action"`
+	CommentID  uint      `json:"comment_id,omitempty"`
+	Username   string    `json:"username,omitempty"`
+	VideoID    uint      `json:"video_id,omitempty"`
+	AuthorID   uint      `json:"author_id,omitempty"`
+	Content    string    `json:"content,omitempty"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
 type LikeWorker struct {
 	ch     *amqp.Channel
 	likes  *repo.LikeRepository

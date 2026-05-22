@@ -12,6 +12,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/wtitdn/renew_video/internal/config"
 	"github.com/wtitdn/renew_video/internal/db"
+	consume "github.com/wtitdn/renew_video/internal/middleware/rabbitmq/consume"
+	mqrabbit "github.com/wtitdn/renew_video/pkg/rabbitmq"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
 
 	"gorm.io/gorm"
@@ -132,7 +134,7 @@ func main() {
 	likeRepo := video.NewLikeRepository(sqlDB)
 	commentRepo := video.NewCommentRepository(sqlDB)
 	likeWorker := worker.NewLikeWorker(ch, likeRepo, videoRepo, likeQueue)
-	commentWorker := worker.NewCommentWorker(ch, commentRepo, videoRepo, commentQueue)
+	commentWorker := consume.NewCommentWorker(ch, commentRepo, videoRepo, commentQueue)
 	var popularityWorker *worker.PopularityWorker
 	if cache != nil {
 		popularityWorker = worker.NewPopularityWorker(ch, cache, popularityQueue)

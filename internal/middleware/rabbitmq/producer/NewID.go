@@ -1,4 +1,4 @@
-package producor
+package producer
 
 import (
 	"crypto/rand"

@@ -1,3 +1,4 @@
+// internal/auth/jwt.go
 package jwt
 
 import (
@@ -9,11 +10,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wtitdn/renew_video/internal/middleware/auth"
+	"github.com/wtitdn/renew_video/internal/repo"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
 )
 
 // JWTAuth check jwt token and ensure it matches the currently stored token.
-func JWTAuth(accountRepo *AccountRepository, cache *rediscache.Client) gin.HandlerFunc {
+func JWTAuth(accountRepo *repo.AccountRepository, cache *rediscache.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -38,7 +41,7 @@ func JWTAuth(accountRepo *AccountRepository, cache *rediscache.Client) gin.Handl
 	}
 }
 
-func SoftJWTAuth(accountRepo *account.AccountRepository, cache *rediscache.Client) gin.HandlerFunc {
+func SoftJWTAuth(accountRepo *repo.AccountRepository, cache *rediscache.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -64,7 +67,7 @@ func SoftJWTAuth(accountRepo *account.AccountRepository, cache *rediscache.Clien
 	}
 }
 
-func check(c *gin.Context, claims *auth.Claims, tokenString string, accountRepo *account.AccountRepository, cache *rediscache.Client) {
+func check(c *gin.Context, claims *auth.Claims, tokenString string, accountRepo *repo.AccountRepository, cache *rediscache.Client) {
 	key := cache.Key("account:%d", claims.AccountID)
 
 	// 先查 Redis

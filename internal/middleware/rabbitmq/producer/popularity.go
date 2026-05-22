@@ -1,11 +1,11 @@
-package producor
+package producer
 
 import (
 	"context"
 	"errors"
 	"time"
 
-	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/rbentity"
+	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/event"
 	mqrabbit "github.com/wtitdn/renew_video/pkg/rabbitmq"
 )
 
@@ -43,11 +43,11 @@ func (p *PopularityMQ) Update(ctx context.Context, videoID uint, change int64) e
 	if err != nil {
 		return err
 	}
-	event := rbentity.PopularityEvent{
+	evt := event.PopularityEvent{
 		EventID:    id,
 		VideoID:    videoID,
 		Change:     change,
 		OccurredAt: time.Now().UTC(),
 	}
-	return p.PublishJSON(ctx, popularityExchange, popularityUpdateRK, event)
+	return p.PublishJSON(ctx, popularityExchange, popularityUpdateRK, evt)
 }

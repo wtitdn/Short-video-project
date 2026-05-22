@@ -1,11 +1,11 @@
-package producor
+package producer
 
 import (
 	"context"
 	"errors"
 	"time"
 
-	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/rbentity"
+	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/event"
 	mqrabbit "github.com/wtitdn/renew_video/pkg/rabbitmq"
 )
 
@@ -41,7 +41,7 @@ func (t *TimelineMQ) PublishVideo(ctx context.Context, videoID uint, createTime 
 	if err != nil {
 		return err
 	}
-	timeline := rbentity.TimelineEvent{
+	timeline := event.TimelineEvent{
 		EventID:    id,
 		VideoID:    videoID,
 		CreateTime: createTime.UnixMilli(),

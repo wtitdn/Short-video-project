@@ -1,4 +1,4 @@
-package rbentity
+package event
 
 import (
 	"sync"
@@ -11,12 +11,6 @@ import (
 )
 
 // 消费者
-type CommentWorker struct {
-	ch       *amqp.Channel
-	comments *repo.CommentRepository
-	videos   *repo.VideoRepository
-	queue    string
-}
 
 type LikeWorker struct {
 	ch     *amqp.Channel

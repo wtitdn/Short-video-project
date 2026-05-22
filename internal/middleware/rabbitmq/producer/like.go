@@ -1,11 +1,11 @@
-package producor
+package producer
 
 import (
 	"context"
 	"errors"
 	"time"
 
-	mqentity "github.com/wtitdn/renew_video/internal/middleware/rabbitmq/rbentity"
+	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/event"
 	mqrabbit "github.com/wtitdn/renew_video/pkg/rabbitmq"
 )
 
@@ -43,14 +43,14 @@ func (l *LikeMQ) pulish(ctx context.Context, action, routingKey string, userID, 
 	if err != nil {
 		return err
 	}
-	event := mqentity.LikeEvent{
+	evt := event.LikeEvent{
 		EventID:    id,
 		Action:     action,
 		UserID:     userID,
 		VideoID:    videoID,
 		OccurredAt: time.Now(),
 	}
-	return l.PublishJSON(ctx, likeExchange, routingKey, event)
+	return l.PublishJSON(ctx, likeExchange, routingKey, evt)
 }
 func (l *LikeMQ) Like(ctx context.Context, userid, videoId uint) error {
 	return l.pulish(ctx, "like", likeLikeRK, userid, videoId)

@@ -1,11 +1,11 @@
-package producor
+package producer
 
 import (
 	"context"
 	"errors"
 	"time"
 
-	mqentity "github.com/wtitdn/renew_video/internal/middleware/rabbitmq/rbentity"
+	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/event"
 	mqrabbit "github.com/wtitdn/renew_video/pkg/rabbitmq"
 )
 
@@ -35,7 +35,7 @@ func NewCommentMQ(base *mqrabbit.RabbitMQ) (*CommentMQ, error) {
 
 // 发布视频消息
 func (c *CommentMQ) Publish(ctx context.Context, username string, videoID, authorID uint, content string) error {
-	return c.publish(ctx, "publish", commentPublishRK, mqentity.CommentEvent{
+	return c.publish(ctx, "publish", commentPublishRK, event.CommentEvent{
 		Username: username,
 		VideoID:  videoID,
 		AuthorID: authorID,
@@ -45,13 +45,13 @@ func (c *CommentMQ) Publish(ctx context.Context, username string, videoID, autho
 
 // 删除视频消息
 func (c *CommentMQ) Delete(ctx context.Context, commentID uint) error {
-	return c.publish(ctx, "delete", commentDeleteRK, mqentity.CommentEvent{
+	return c.publish(ctx, "delete", commentDeleteRK, event.CommentEvent{
 		CommentID: commentID,
 	})
 }
 
 // 统一发布消息的组件
-func (c *CommentMQ) publish(ctx context.Context, action, routingKey string, evt mqentity.CommentEvent) error {
+func (c *CommentMQ) publish(ctx context.Context, action, routingKey string, evt event.CommentEvent) error {
 	if c == nil || c.RabbitMQ == nil {
 		return errors.New("comment mq is not initialized")
 	}

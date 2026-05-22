@@ -1,11 +1,11 @@
-package producor
+package producer
 
 import (
 	"context"
 	"errors"
 	"time"
 
-	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/rbentity"
+	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/event"
 	mqrabbit "github.com/wtitdn/renew_video/pkg/rabbitmq"
 )
 
@@ -43,7 +43,7 @@ func (s *SocialMQ) publish(ctx context.Context, action, routingKey string, follo
 	if err != nil {
 		return err
 	}
-	evt := rbentity.SocialEvent{
+	evt := event.SocialEvent{
 		EventID:    id,
 		Action:     action,
 		FollowerID: followerID,

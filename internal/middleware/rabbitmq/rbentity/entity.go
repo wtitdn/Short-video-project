@@ -1,4 +1,4 @@
-package entity
+package rbentity
 
 import (
 	"sync"
@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// 消费者
 type CommentWorker struct {
 	ch       *amqp.Channel
 	comments *repo.CommentRepository
@@ -17,16 +18,6 @@ type CommentWorker struct {
 	queue    string
 }
 
-type CommentEvent struct {
-	EventID    string    `json:"event_id"`
-	Action     string    `json:"action"`
-	CommentID  uint      `json:"comment_id,omitempty"`
-	Username   string    `json:"username,omitempty"`
-	VideoID    uint      `json:"video_id,omitempty"`
-	AuthorID   uint      `json:"author_id,omitempty"`
-	Content    string    `json:"content,omitempty"`
-	OccurredAt time.Time `json:"occurred_at"`
-}
 type LikeWorker struct {
 	ch     *amqp.Channel
 	likes  *repo.LikeRepository
@@ -56,6 +47,50 @@ type SocialWorker struct {
 	repo  *repo.SocialRepository
 	queue string
 }
+
+// 生产者
+type CommentEvent struct {
+	EventID    string    `json:"event_id"`
+	Action     string    `json:"action"`
+	CommentID  uint      `json:"comment_id,omitempty"`
+	Username   string    `json:"username,omitempty"`
+	VideoID    uint      `json:"video_id,omitempty"`
+	AuthorID   uint      `json:"author_id,omitempty"`
+	Content    string    `json:"content,omitempty"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+type LikeEvent struct {
+	EventID    string    `json:"event_id"`
+	Action     string    `json:"action"`
+	UserID     uint      `json:"user_id"`
+	VideoID    uint      `json:"video_id"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+type SocialEvent struct {
+	EventID    string    `json:"event_id"`
+	Action     string    `json:"action"`
+	FollowerID uint      `json:"follower_id"`
+	VloggerID  uint      `json:"vlogger_id"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+type TimelineEvent struct {
+	EventID    string    `json:"event_id"`
+	VideoID    uint      `json:"video_id"`
+	CreateTime int64     `json:"create_time"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+type PopularityEvent struct {
+	EventID    string    `json:"event_id"`
+	VideoID    uint      `json:"video_id"`
+	Change     int64     `json:"change"`
+	OccurredAt time.Time `json:"occurred_at"`
+}
+
+// SSE结构体
 type SSEHub struct {
 	mu      sync.RWMutex
 	clients map[uint][]chan *WorkerNotification

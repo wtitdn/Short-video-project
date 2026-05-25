@@ -26,7 +26,7 @@ observability:
     api_addr: localhost:6060
     worker_addr: localhost:6061
 minio:
-  endpoint  : 39.104.69.250:9000
+  endpoint  :
   accessKey : admin
   secretKey : admin123456
   useSSL    : false

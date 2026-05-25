@@ -102,3 +102,8 @@ func (r *LikeRepository) ListLikedVideos(ctx context.Context, accountID uint) ([
 	}
 	return videos, nil
 }
+
+// 暴露db方法
+func (r *LikeRepository) WithTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return r.db.WithContext(ctx).Transaction(fn)
+}

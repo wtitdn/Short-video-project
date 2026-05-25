@@ -3,6 +3,7 @@ package consume
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"time"
 
@@ -108,4 +109,14 @@ func (w *LikeWorker) applyUnlike(ctx context.Context, userID, videoID uint) erro
 		return err
 	}
 	return w.videos.ChangePopularity(ctx, videoID, -1)
+}
+func (w *LikeWorker) Run(ctx context.Context) error {
+	if w == nil || w.ch == nil || w.likes == nil || w.videos == nil {
+		return errors.New("comment worker is not initialized")
+	}
+	if w.queue == "" {
+		return errors.New("queue is required")
+	}
+	
+	return runConsumer(ctx, w.ch, w.queue, w.handleDelivery)
 }

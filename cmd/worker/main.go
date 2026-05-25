@@ -13,6 +13,7 @@ import (
 	"github.com/wtitdn/renew_video/internal/config"
 	"github.com/wtitdn/renew_video/internal/db"
 	consume "github.com/wtitdn/renew_video/internal/middleware/rabbitmq/consume"
+	"github.com/wtitdn/renew_video/internal/repo"
 	mqrabbit "github.com/wtitdn/renew_video/pkg/rabbitmq"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
 
@@ -128,21 +129,21 @@ func main() {
 		log.Fatalf("Failed to set qos: %v", err)
 	}
 
-	repo := social.NewSocialRepository(sqlDB)
-	socialWorker := worker.NewSocialWorker(ch, repo, socialQueue)
-	videoRepo := video.NewVideoRepository(sqlDB)
-	likeRepo := video.NewLikeRepository(sqlDB)
-	commentRepo := video.NewCommentRepository(sqlDB)
-	likeWorker := worker.NewLikeWorker(ch, likeRepo, videoRepo, likeQueue)
+	rep := repo.NewSocialRepository(sqlDB)
+	socialWorker := consume.NewSocialWorker(ch, rep, socialQueue)
+	videoRepo := repo.NewVideoRepository(sqlDB)
+	likeRepo := repo.NewLikeRepository(sqlDB)
+	commentRepo := repo.NewCommentRepository(sqlDB)
+	likeWorker := consume.NewLikeWorker(ch, likeRepo, videoRepo, likeQueue)
 	commentWorker := consume.NewCommentWorker(ch, commentRepo, videoRepo, commentQueue)
-	var popularityWorker *worker.PopularityWorker
+	var popularityWorker *consume.PopularityWorker
 	if cache != nil {
-		popularityWorker = worker.NewPopularityWorker(ch, cache, popularityQueue)
+		popularityWorker = consume.NewPopularityWorker(ch, cache, popularityQueue)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
+	//检测连接
 	pprofServer, err := observability.NewPprofServer(
 		"Worker",
 		cfg.ObservabilityConfig.Pprof.Enabled,

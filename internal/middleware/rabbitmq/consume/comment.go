@@ -98,29 +98,5 @@ func (w *CommentWorker) Run(ctx context.Context) error {
 	if w.queue == "" {
 		return errors.New("queue is required")
 	}
-
-	deliveries, err := w.ch.Consume(
-		w.queue,
-		"",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		return err
-	}
-	//死循环监听消费事件
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case d, ok := <-deliveries:
-			if !ok {
-				return errors.New("deliveries channel closed")
-			}
-			w.handleDelivery(ctx, d)
-		}
-	}
+	return runConsumer(ctx, w.ch, w.queue, w.handleDelivery)
 }

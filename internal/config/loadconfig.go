@@ -15,6 +15,7 @@ type Config struct {
 	Redis               RedisConfig         `yaml:"redis"`
 	RabbitMQ            RabbitMQConfig      `yaml:"rabbitmq"`
 	ObservabilityConfig ObservabilityConfig `yaml:"observability"`
+	Minio               MinioConfig         `yaml:"minio"`
 }
 
 type ServerConfig struct {
@@ -28,7 +29,12 @@ type DatabaseConfig struct {
 	Password string `yaml:"password"`
 	DBName   string `yaml:"dbname"`
 }
-
+type MinioConfig struct {
+	Endpoint  string `yaml:"endpoint"`
+	AccessKey string `yaml:"accesskey"`
+	SecretKey string `yaml:"secretkey"`
+	UseSSL    bool   `yaml:"usessl"`
+}
 type RedisConfig struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -126,6 +132,16 @@ func ApplyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("RABBITMQ_PASS"); v != "" {
 		cfg.RabbitMQ.Password = v
 	}
+	if v := os.Getenv("MINIO_ENDPOINT"); v != "" {
+		cfg.Minio.Endpoint = v
+	}
+	if v := os.Getenv("MINIO_ACCESS_KEY"); v != "" {
+		cfg.Minio.AccessKey = v
+	}
+	if v := os.Getenv("MINIO_SECRET_KEY"); v != "" {
+		cfg.Minio.SecretKey = v
+	}
+
 }
 
 // bool用来表示是否使用了默认配置，true表示使用了默认配置

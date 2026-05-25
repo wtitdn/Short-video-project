@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wtitdn/renew_video/pkg/jwt"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
 )
 

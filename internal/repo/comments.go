@@ -52,3 +52,14 @@ func (r *CommentRepository) GetByID(ctx context.Context, id uint) (*entity.Comme
 	}
 	return &comment, nil
 }
+
+func (r *CommentRepository) WithTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return r.db.WithContext(ctx).Transaction(fn)
+}
+
+func (r *CommentRepository) CreateNotification(ctx context.Context, notif *entity.Notification) error {
+	if notif == nil {
+		return nil
+	}
+	return r.db.WithContext(ctx).Create(notif).Error
+}

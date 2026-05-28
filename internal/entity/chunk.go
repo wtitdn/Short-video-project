@@ -33,23 +33,39 @@ func (s *ChunkUploadSession) IsComplete() bool {
 }
 
 type InitChunkUploadRequest struct {
-	Filename    string `json:"filename" binding:"required"`
-	FileSize    int64  `json:"file_size" binding:"required,min=1"`
-	ChunkSize   int64  `json:"chunk_size" binding:"required,min=1"`
-	TotalChunks int    `json:"total_chunks" binding:"required,min=1"`
-	FileHash    string `json:"file_hash" binding:"required"`
+	FileName    string `json:"file_name" binding:"required"`
+	ContentType string `json:"content_type"`
 }
 
-type UploadChunkRequest struct {
-	UploadID   string `form:"upload_id" binding:"required"`
-	ChunkIndex int    `form:"chunk_index" binding:"min=0"`
-	ChunkHash  string `form:"chunk_hash" binding:"required"`
+type InitChunkUploadResponse struct {
+	Bucket    string `json:"bucket"`
+	ObjectKey string `json:"object_key"`
+	UploadID  string `json:"upload_id"`
 }
 
-type ChunkStatusRequest struct {
-	UploadID string `json:"upload_id" binding:"required"`
+type ChunkPartURLRequest struct {
+	ObjectKey  string `json:"object_key" binding:"required"`
+	UploadID   string `json:"upload_id" binding:"required"`
+	PartNumber int    `json:"part_number" binding:"required,min=1"`
+}
+
+type ChunkPartURLResponse struct {
+	PartNumber int    `json:"part_number"`
+	URL        string `json:"url"`
 }
 
 type CompleteChunkUploadRequest struct {
-	UploadID string `json:"upload_id" binding:"required"`
+	ObjectKey string              `json:"object_key" binding:"required"`
+	UploadID  string              `json:"upload_id" binding:"required"`
+	Parts     []CompleteChunkPart `json:"parts" binding:"required"`
+}
+
+type CompleteChunkPart struct {
+	PartNumber int    `json:"part_number"`
+	ETag       string `json:"etag"`
+}
+
+type AbortChunkUploadRequest struct {
+	ObjectKey string `json:"object_key" binding:"required"`
+	UploadID  string `json:"upload_id" binding:"required"`
 }

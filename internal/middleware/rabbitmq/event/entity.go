@@ -42,7 +42,7 @@ type SocialWorker struct {
 	queue string
 }
 
-// 生产者
+// 事件
 type CommentEvent struct {
 	EventID    string    `json:"event_id"`
 	Action     string    `json:"action"`

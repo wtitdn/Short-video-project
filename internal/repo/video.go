@@ -95,9 +95,16 @@ func (vr *VideoRepository) GetByID(ctx context.Context, id uint) (*entity.Video,
 	var video entity.Video
 	if err := vr.db.WithContext(ctx).
 		Where("id = ?", id).
-		Find(&video).Error; err != nil {
+		First(&video).Error; err != nil {
 		return nil, err
 	}
+	var likesCount int64
+	if err := vr.db.WithContext(ctx).Model(&entity.Like{}).
+		Where("video_id = ?", id).
+		Count(&likesCount).Error; err != nil {
+		return nil, err
+	}
+	video.LikesCount = likesCount
 	return &video, nil
 }
 func (r *VideoRepository) WithTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {

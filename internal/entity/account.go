@@ -10,6 +10,7 @@ type Account struct {
 	Bio          string `gorm:"type:varchar(255)" json:"bio,omitempty"`
 }
 
+// DTO
 type CreateAccountRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`

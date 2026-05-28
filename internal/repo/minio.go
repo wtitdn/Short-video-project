@@ -51,6 +51,9 @@ func (r *MinioRepository) EnsureBucket(ctx context.Context, bucket string) error
 
 	exists, err := r.storage.MinioClient.BucketExists(ctx, bucket)
 	if err != nil {
+		if miniosdk.ToErrorResponse(err).Code == "AccessDenied" {
+			return nil
+		}
 		return err
 	}
 	if exists {
@@ -143,17 +146,22 @@ func (r *MinioRepository) RemoveObject(ctx context.Context, bucket, objectKey st
 
 // 用户头像逻辑
 func (r *MinioRepository) UploadObject(ctx context.Context, bucket, objectKey, contentType string, reader io.Reader, size int64) error {
+	_, err := r.UploadObjectInfo(ctx, bucket, objectKey, contentType, reader, size)
+	return err
+}
+
+func (r *MinioRepository) UploadObjectInfo(ctx context.Context, bucket, objectKey, contentType string, reader io.Reader, size int64) (*miniosdk.UploadInfo, error) {
 	if r == nil || r.storage == nil || r.storage.MinioClient == nil {
-		return errors.New("minio repository is not initialized")
+		return nil, errors.New("minio repository is not initialized")
 	}
 	if bucket == "" || objectKey == "" {
-		return errors.New("bucket and objectKey are required")
+		return nil, errors.New("bucket and objectKey are required")
 	}
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 
-	_, err := r.storage.MinioClient.PutObject(
+	info, err := r.storage.MinioClient.PutObject(
 		ctx,
 		bucket,
 		objectKey,
@@ -163,7 +171,10 @@ func (r *MinioRepository) UploadObject(ctx context.Context, bucket, objectKey, c
 			ContentType: contentType,
 		},
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return &info, nil
 }
 
 // 预签名

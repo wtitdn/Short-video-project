@@ -11,6 +11,7 @@ type Comment struct {
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
+// DTO
 type PublishCommentRequest struct {
 	VideoID uint   `json:"video_id"`
 	Content string `json:"content"`

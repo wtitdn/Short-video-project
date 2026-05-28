@@ -25,7 +25,7 @@ type VideoService struct {
 }
 
 func NewVideoService(repo *repo.VideoRepository, cache *rediscache.Client, popularityMQ *producer.PopularityMQ) *VideoService {
-	return &VideoService{repo: repo, cache: cache, cacheTTL: 5 * time.Minute, popularityMQ: popularityMQ}
+	return &VideoService{repo: repo, cache: cache, cacheTTL: 3 * time.Minute, popularityMQ: popularityMQ}
 }
 
 func (vs *VideoService) Publish(ctx context.Context, video *entity.Video) error {
@@ -188,7 +188,6 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 			}
 		}
 	}
-
 	video, err := vs.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -198,7 +197,6 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 	}
 	return video, nil
 }
-
 func (vs *VideoService) UpdateLikesCount(ctx context.Context, id uint, likesCount int64) error {
 	if err := vs.repo.UpdateLikesCount(ctx, id, likesCount); err != nil {
 		return err

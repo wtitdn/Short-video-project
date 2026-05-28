@@ -21,7 +21,7 @@ const (
 	popularityUpdateRK = "video.popularity.update"
 )
 
-func Newpopularity(base *mqrabbit.RabbitMQ) (*PopularityMQ, error) {
+func NewPopularity(base *mqrabbit.RabbitMQ) (*PopularityMQ, error) {
 	if base == nil {
 		return nil, errors.New("mq is nil")
 	}

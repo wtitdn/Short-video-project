@@ -7,23 +7,33 @@ import (
 	"errors"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
+var (
+	jwtSecretOnce sync.Once
+	jwtSecretKey  []byte
+)
+
 func jwtSecret() []byte {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		b := make([]byte, 32)
-		if _, err := rand.Read(b); err != nil {
-			log.Printf("FATAL: cannot generate JWT secret: %v", err)
-			return []byte("fallback-unsafe-key-change-me")
+	jwtSecretOnce.Do(func() {
+		secret := os.Getenv("JWT_SECRET")
+		if secret == "" {
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err != nil {
+				log.Printf("FATAL: cannot generate JWT secret: %v", err)
+				secret = "fallback-unsafe-key-change-me"
+			} else {
+				secret = hex.EncodeToString(b)
+				log.Printf("WARNING: JWT_SECRET not set, generated random key. All tokens invalid on restart.")
+			}
 		}
-		secret = hex.EncodeToString(b)
-		log.Printf("WARNING: JWT_SECRET not set, generated random key. All tokens invalid on restart.")
-	}
-	return []byte(secret)
+		jwtSecretKey = []byte(secret)
+	})
+	return jwtSecretKey
 }
 
 type Claims struct {

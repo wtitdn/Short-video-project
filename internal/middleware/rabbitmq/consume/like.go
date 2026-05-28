@@ -12,17 +12,26 @@ import (
 	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/event"
 	"github.com/wtitdn/renew_video/internal/repo"
 	"github.com/wtitdn/renew_video/pkg/rabbitmq"
+	rediscache "github.com/wtitdn/renew_video/pkg/redis"
 )
 
 type LikeWorker struct {
 	ch     *amqp.Channel
 	likes  *repo.LikeRepository
 	videos *repo.VideoRepository
+	cache  *rediscache.Client
 	queue  string
 }
 
-func NewLikeWorker(ch *amqp.Channel, likes *repo.LikeRepository, videos *repo.VideoRepository, queue string) *LikeWorker {
-	return &LikeWorker{ch: ch, likes: likes, videos: videos, queue: queue}
+func NewLikeWorker(ch *amqp.Channel, likes *repo.LikeRepository, videos *repo.VideoRepository, cache *rediscache.Client, queue string) *LikeWorker {
+	return &LikeWorker{ch: ch, likes: likes, videos: videos, cache: cache, queue: queue}
+}
+
+func (w *LikeWorker) invalidateVideoDetailCache(videoID uint) {
+	if w.cache == nil || videoID == 0 {
+		return
+	}
+	_ = w.cache.Del(context.Background(), w.cache.Key("video:detail:id=%d", videoID))
 }
 
 // 接受到中继器的信息
@@ -86,7 +95,11 @@ func (w *LikeWorker) applyLike(ctx context.Context, userID, videoID uint) error 
 	if err := w.videos.ChangeLikesCount(ctx, videoID, 1); err != nil {
 		return err
 	}
-	return w.videos.ChangePopularity(ctx, videoID, 1)
+	if err := w.videos.ChangePopularity(ctx, videoID, 1); err != nil {
+		return err
+	}
+	w.invalidateVideoDetailCache(videoID)
+	return nil
 }
 func (w *LikeWorker) applyUnlike(ctx context.Context, userID, videoID uint) error {
 	ok, err := w.videos.IsExist(ctx, videoID)
@@ -108,7 +121,11 @@ func (w *LikeWorker) applyUnlike(ctx context.Context, userID, videoID uint) erro
 	if err := w.videos.ChangeLikesCount(ctx, videoID, -1); err != nil {
 		return err
 	}
-	return w.videos.ChangePopularity(ctx, videoID, -1)
+	if err := w.videos.ChangePopularity(ctx, videoID, -1); err != nil {
+		return err
+	}
+	w.invalidateVideoDetailCache(videoID)
+	return nil
 }
 func (w *LikeWorker) Run(ctx context.Context) error {
 	if w == nil || w.ch == nil || w.likes == nil || w.videos == nil {
@@ -117,6 +134,6 @@ func (w *LikeWorker) Run(ctx context.Context) error {
 	if w.queue == "" {
 		return errors.New("queue is required")
 	}
-	
+
 	return runConsumer(ctx, w.ch, w.queue, w.handleDelivery)
 }

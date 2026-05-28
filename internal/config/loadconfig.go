@@ -31,9 +31,9 @@ type DatabaseConfig struct {
 }
 type MinioConfig struct {
 	Endpoint  string `yaml:"endpoint"`
-	AccessKey string `yaml:"accesskey"`
-	SecretKey string `yaml:"secretkey"`
-	UseSSL    bool   `yaml:"usessl"`
+	AccessKey string `yaml:"accessKey"`
+	SecretKey string `yaml:"secretKey"`
+	UseSSL    bool   `yaml:"useSSL"`
 }
 type RedisConfig struct {
 	Host     string `yaml:"host"`
@@ -140,6 +140,11 @@ func ApplyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("MINIO_SECRET_KEY"); v != "" {
 		cfg.Minio.SecretKey = v
+	}
+	if v := os.Getenv("MINIO_USE_SSL"); v != "" {
+		if useSSL, err := strconv.ParseBool(v); err == nil {
+			cfg.Minio.UseSSL = useSSL
+		}
 	}
 
 }

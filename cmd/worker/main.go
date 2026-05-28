@@ -14,6 +14,7 @@ import (
 	"github.com/wtitdn/renew_video/internal/db"
 	consume "github.com/wtitdn/renew_video/internal/middleware/rabbitmq/consume"
 	"github.com/wtitdn/renew_video/internal/repo"
+	"github.com/wtitdn/renew_video/pkg/observability"
 	mqrabbit "github.com/wtitdn/renew_video/pkg/rabbitmq"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
 
@@ -57,7 +58,7 @@ func main() {
 	// 加载配置
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "configs/config.yaml"
+		configPath = "../../config/config.yaml"
 	}
 	log.Printf("Loading config from %s", configPath)
 	cfg, usedDefault, err := config.LoadLocalDev(configPath)
@@ -134,7 +135,7 @@ func main() {
 	videoRepo := repo.NewVideoRepository(sqlDB)
 	likeRepo := repo.NewLikeRepository(sqlDB)
 	commentRepo := repo.NewCommentRepository(sqlDB)
-	likeWorker := consume.NewLikeWorker(ch, likeRepo, videoRepo, likeQueue)
+	likeWorker := consume.NewLikeWorker(ch, likeRepo, videoRepo, cache, likeQueue)
 	commentWorker := consume.NewCommentWorker(ch, commentRepo, videoRepo, commentQueue)
 	var popularityWorker *consume.PopularityWorker
 	if cache != nil {

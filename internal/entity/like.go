@@ -9,6 +9,7 @@ type Like struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// DTO
 type LikeRequest struct {
 	VideoID uint `json:"video_id"`
 }

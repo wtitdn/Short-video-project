@@ -1,13 +1,17 @@
 package http
 
 import (
+	"context"
 	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wtitdn/renew_video/internal/controller/http/handler"
+	"github.com/wtitdn/renew_video/internal/entity"
+	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/producer"
 	"github.com/wtitdn/renew_video/internal/repo"
 	"github.com/wtitdn/renew_video/internal/usecase"
+	"github.com/wtitdn/renew_video/internal/worker"
 	"github.com/wtitdn/renew_video/pkg/jwt"
 	storage "github.com/wtitdn/renew_video/pkg/minio"
 	"github.com/wtitdn/renew_video/pkg/rabbitmq"
@@ -28,6 +32,9 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 	//防抖中间件
 	loginLimiter := ratelimit.Limit(cache, "account_login", 10, time.Minute, ratelimit.KeyByIP)
 	registerLimiter := ratelimit.Limit(cache, "account_register", 5, time.Hour, ratelimit.KeyByIP)
+	likeLimiter := ratelimit.Limit(cache, "like_write", 30, time.Minute, ratelimit.KeyByAccount)
+	commentLimiter := ratelimit.Limit(cache, "comment_write", 10, time.Minute, ratelimit.KeyByAccount)
+	socialLimiter := ratelimit.Limit(cache, "social_write", 20, time.Minute, ratelimit.KeyByAccount)
 	//account
 	accountRepository := repo.NewAccountRepository(db)
 
@@ -43,6 +50,7 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 		accountGroup.POST("/refresh", accountHandler.Refresh)
 	}
 	protectedAccountGroup := accountGroup.Group("")
+	//jwt
 	protectedAccountGroup.Use(jwt.JWTAuth(accountRepository, cache))
 	{
 		protectedAccountGroup.POST("/logout", accountHandler.Logout)
@@ -50,6 +58,189 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 		protectedAccountGroup.POST("/uploadAvatar", accountHandler.UploadAvatar)
 		protectedAccountGroup.POST("/updateProfile", accountHandler.UpdateProfile)
 	}
+	// video
+	videoRepository := repo.NewVideoRepository(db)
+	popularityMQ, err := producer.NewPopularity(rmq)
+	if err != nil {
+		log.Printf("PopularityMQ init failed (mq disabled): %v", err)
+		popularityMQ = nil
+	}
+	videoService := usecase.NewVideoService(videoRepository, cache, popularityMQ)
+	videoHandler := handler.NewVideoHandler(videoService, accountService, minioRepository)
+	videoGroup := r.Group("/video")
+	{
+		videoGroup.POST("/listByAuthorID", videoHandler.ListByAuthorID)
+		videoGroup.POST("/getDetail", videoHandler.GetDetail)
+	}
+	protectedVideoGroup := videoGroup.Group("")
+	protectedVideoGroup.Use(jwt.JWTAuth(accountRepository, cache))
+	{
+		protectedVideoGroup.POST("/uploadVideo", videoHandler.UploadVideo)
+		protectedVideoGroup.POST("/uploadCover", videoHandler.UploadCover)
+		protectedVideoGroup.POST("/publish", videoHandler.PublishVideo)
+		protectedVideoGroup.POST("/chunk/init", videoHandler.InitChunkUpload)
+		protectedVideoGroup.POST("/chunk/part-url", videoHandler.CreateChunkPartURL)
+		protectedVideoGroup.POST("/chunk/complete", videoHandler.CompleteChunkUpload)
+		protectedVideoGroup.POST("/chunk/abort", videoHandler.AbortChunkUpload)
+	}
+	// like
+	likeMQ, err := producer.NewLikeMQ(rmq)
+	if err != nil {
+		log.Printf("LikeMQ init failed (mq disabled): %v", err)
+		likeMQ = nil
+	}
+	likeRepository := repo.NewLikeRepository(db)
+	likeService := usecase.NewLikeService(likeRepository, videoRepository, cache, likeMQ, popularityMQ)
+	likeHandler := handler.NewLikeHandler(likeService)
+	likeGroup := r.Group("/like")
+	protectedLikeGroup := likeGroup.Group("")
+	protectedLikeGroup.Use(jwt.JWTAuth(accountRepository, cache))
+	{
+		protectedLikeGroup.POST("/like", likeLimiter, likeHandler.Like)
+		protectedLikeGroup.POST("/unlike", likeLimiter, likeHandler.Unlike)
+		protectedLikeGroup.POST("/isLiked", likeHandler.IsLiked)
+		protectedLikeGroup.POST("/listMyLikedVideos", likeHandler.ListMyLikedVideos)
+	}
+	// comment
+	commentRepository := repo.NewCommentRepository(db)
+	commentMQ, err := producer.NewCommentMQ(rmq)
+	if err != nil {
+		log.Printf("CommentMQ init failed (mq disabled): %v", err)
+		commentMQ = nil
+	}
+	commentService := usecase.NewCommentService(commentRepository, videoRepository, cache, commentMQ, popularityMQ)
+	commentHandler := handler.NewCommentHandler(commentService, accountService)
+	commentGroup := r.Group("/comment")
+	{
+		commentGroup.POST("/listAll", commentHandler.GetAllComments)
+	}
+	protectedCommentGroup := commentGroup.Group("")
+	protectedCommentGroup.Use(jwt.JWTAuth(accountRepository, cache))
+	{
+		protectedCommentGroup.POST("/publish", commentLimiter, commentHandler.PublishComment)
+		protectedCommentGroup.POST("/delete", commentLimiter, commentHandler.DeleteComment)
+	}
+	// social
+	socialMQ, err := producer.NewSocialMQ(rmq)
+	if err != nil {
+		log.Printf("SocialMQ init failed (mq disabled): %v", err)
+		socialMQ = nil
+	}
+	socialRepository := repo.NewSocialRepository(db)
+	socialService := usecase.NewSocialService(socialRepository, accountRepository, socialMQ)
+	socialHandler := handler.NewSocialHandler(socialService)
+	socialGroup := r.Group("/social")
+	protectedSocialGroup := socialGroup.Group("")
+	protectedSocialGroup.Use(jwt.JWTAuth(accountRepository, cache))
+	{
+		protectedSocialGroup.POST("/follow", socialLimiter, socialHandler.Follow)
+		protectedSocialGroup.POST("/unfollow", socialLimiter, socialHandler.Unfollow)
+		protectedSocialGroup.POST("/getAllFollowers", socialHandler.GetAllFollowers)
+		protectedSocialGroup.POST("/getAllVloggers", socialHandler.GetAllVloggers)
+		protectedSocialGroup.POST("/getCounts", socialHandler.GetCounts)
+	}
+
+	accountGroup.POST("/getProfile", func(c *gin.Context) {
+		var req entity.GetProfileRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if req.AccountID == 0 {
+			c.JSON(400, gin.H{"error": "account_id is required"})
+			return
+		}
+		acc, err := accountService.FindByID(c.Request.Context(), req.AccountID)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		videoCount, _ := videoRepository.CountByAuthor(c.Request.Context(), req.AccountID)
+		totalLikes, _ := videoRepository.TotalLikesByAuthor(c.Request.Context(), req.AccountID)
+		followerCount, _ := socialRepository.CountFollowers(c.Request.Context(), req.AccountID)
+		vloggerCount, _ := socialRepository.CountVloggers(c.Request.Context(), req.AccountID)
+
+		c.JSON(200, entity.GetProfileResponse{
+			Account:    entity.FindByIDResponse{ID: acc.ID, Username: acc.Username, AvatarURL: acc.AvatarURL, Bio: acc.Bio},
+			VideoCount: videoCount, TotalLikes: totalLikes,
+			FollowerCount: followerCount, VloggerCount: vloggerCount,
+		})
+	})
+	// feed
+	feedRepository := repo.NewFeedRepository(db)
+	feedService := usecase.NewFeedService(feedRepository, likeRepository, cache)
+	feedHandler := handler.NewFeedHandler(feedService)
+	feedGroup := r.Group("/feed")
+	feedGroup.Use(jwt.SoftJWTAuth(accountRepository, cache))
+	{
+		feedGroup.POST("/listLatest", feedHandler.ListLatest)
+		feedGroup.POST("/listLikesCount", feedHandler.ListLikesCount)
+		feedGroup.POST("/listByPopularity", feedHandler.ListByPopularity)
+		feedGroup.POST("/listByTag", feedHandler.ListByTag)
+	}
+	protectedFeedGroup := feedGroup.Group("")
+	protectedFeedGroup.Use(jwt.JWTAuth(accountRepository, cache))
+	{
+		protectedFeedGroup.POST("/listByFollowing", feedHandler.ListByFollowing)
+	}
+	// message
+	messageRepo := repo.NewMesRepository(db)
+	messageService := usecase.NewMesService(messageRepo)
+	messageHandler := handler.NewMesHandler(messageService)
+	messageGroup := r.Group("/message")
+	protectedMessageGroup := messageGroup.Group("")
+	protectedMessageGroup.Use(jwt.JWTAuth(accountRepository, cache))
+	{
+		protectedMessageGroup.POST("/send", messageHandler.Send)
+		protectedMessageGroup.POST("/list", messageHandler.List)
+	}
+	//worker
+	timelineMQ, err := producer.NewTimelineMQ(rmq)
+	if err != nil {
+		log.Printf("timelineMQ init failed (mq disabled): %v", err)
+		timelineMQ = nil
+	}
+	worker.StartOutboxPoller(db, timelineMQ)
+	worker.StartConsumer(timelineMQ, "video.timeline.update.queue", cache)
+
+	// SSE notification
+	if rmq != nil && rmq.Ch != nil {
+		rmq.DeclareTopic("like.events", "notification.like", "like.like")
+		rmq.DeclareTopic("comment.events", "notification.comment", "comment.publish")
+		rmq.DeclareTopic("social.events", "notification.social", "social.follow")
+	}
+	sseHub := worker.NewSSEHub(db)
+	notifGroup := r.Group("/notification")
+	notifGroup.Use(sseHub.SSERequireAuth())
+	sseHub.RegisterRoutes(r, notifGroup)
+	//并行初始化消费者队列
+	go func() {
+		if rmq != nil && rmq.Ch != nil {
+			hub := sseHub
+			ctx := context.Background()
+			// consume from like queue
+			go func() {
+				w := worker.NewNotificationWorker(rmq.Ch, db, "notification.like", hub)
+				if err := w.Run(ctx); err != nil {
+					log.Printf("notification-like worker: %v", err)
+				}
+			}()
+			go func() {
+				w := worker.NewNotificationWorker(rmq.Ch, db, "notification.comment", hub)
+				if err := w.Run(ctx); err != nil {
+					log.Printf("notification-comment worker: %v", err)
+				}
+			}()
+			go func() {
+				w := worker.NewNotificationWorker(rmq.Ch, db, "notification.social", hub)
+				if err := w.Run(ctx); err != nil {
+					log.Printf("notification-social worker: %v", err)
+				}
+			}()
+		} else {
+			log.Printf("Notification SSE disabled (MQ not available)")
+		}
+	}()
 
 	return r
 }

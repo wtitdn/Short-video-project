@@ -11,6 +11,7 @@ type Message struct {
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
+// DTO
 type SendRequest struct {
 	ToID    uint   `json:"to_id"`
 	Content string `json:"content"`

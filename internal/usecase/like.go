@@ -32,6 +32,13 @@ func isDupKey(err error) bool {
 	return errors.As(err, &me) && me.Number == 1062
 }
 
+func (s *LikeService) invalidateVideoDetailCache(videoID uint) {
+	if s.cache == nil || videoID == 0 {
+		return
+	}
+	_ = s.cache.Del(context.Background(), s.cache.Key("video:detail:id=%d", videoID))
+}
+
 func (s *LikeService) Like(ctx context.Context, like *entity.Like) error {
 	if like == nil {
 		return errors.New("like is nil")
@@ -71,6 +78,7 @@ func (s *LikeService) Like(ctx context.Context, like *entity.Like) error {
 			redisEnqueued = true
 		}
 	}
+	s.invalidateVideoDetailCache(like.VideoID)
 	if mysqlEnqueued && redisEnqueued {
 		return nil
 	}
@@ -147,6 +155,7 @@ func (s *LikeService) Unlike(ctx context.Context, like *entity.Like) error {
 			redisEnqueued = true
 		}
 	}
+	s.invalidateVideoDetailCache(like.VideoID)
 	if mysqlEnqueued && redisEnqueued {
 		return nil
 	}

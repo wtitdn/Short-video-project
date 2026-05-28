@@ -6,6 +6,7 @@ type Social struct {
 	VloggerID  uint `gorm:"not null;index:idx_social_vlogger;uniqueIndex:idx_social_follower_vlogger"`
 }
 
+// DTO
 type FollowRequest struct {
 	VloggerID uint `json:"vlogger_id"`
 }
@@ -19,11 +20,20 @@ type GetAllFollowersRequest struct {
 }
 
 type GetAllFollowersResponse struct {
-	Followers     []Account `json:"followers"`
-	FollowerCount int64     `json:"follower_count"`
+	Followers     []*Account `json:"followers"`
+	FollowerCount int64      `json:"follower_count"`
 }
 
 type GetAllVloggersResponse struct {
-	Vloggers     []Account `json:"vloggers"`
-	VloggerCount int64     `json:"vlogger_count"`
+	Vloggers     []*Account `json:"vloggers"`
+	VloggerCount int64      `json:"vlogger_count"`
+}
+
+type SocialCounts struct {
+	FollowerCount int64 `json:"follower_count"`
+	VloggerCount  int64 `json:"vlogger_count"`
+}
+
+type GetAllVloggersRequest struct {
+	FollowerID uint `json:"follower_id"`
 }

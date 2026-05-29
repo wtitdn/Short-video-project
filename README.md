@@ -1,5 +1,6 @@
 # 短视频流项目 <a>线上地址</a>
 ## 内容fork自布洛克琴 <a href='https://github.com/LeoninCS/feedsystem_video_go'>原项目地址→</a>
+
 ## 原项目不足：
 - 项目目录结构耦合重，多人开发难以同步。
 - 视频文件存储与数据库改动在同一台服务器上，在2H2G的服务器上超过三个的并发请求容易卡死。
@@ -50,8 +51,17 @@ renew_video/
 ├── go.sum                # Go 依赖锁定文件
 └── README.md             # 项目说明文档
 ```
+## 本地开发指引
+在cmd文件夹下同时启动app下主程序，worker下rabbitmq服务消费者队列
 
-## 后端部署
+```
+go run app/main.go 
+```
+另一个终端
+```
+go run worker/main.go
+```
+## 后端部署指引
 
 本地打包dist,分别在cmd/app，cmd/worker下执行
 

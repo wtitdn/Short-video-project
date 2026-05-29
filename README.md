@@ -54,12 +54,13 @@ renew_video/
 ## 本地开发指引
 在cmd文件夹下同时启动app下主程序，worker下rabbitmq服务消费者队列
 
+在cmd文件夹下启动终端
 ```
-go run app/main.go 
+go run app\main.go 
 ```
 另一个终端
 ```
-go run worker/main.go
+go run worker\main.go 
 ```
 ## 后端部署指引
 

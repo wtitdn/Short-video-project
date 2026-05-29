@@ -1,7 +1,0 @@
-./account.go
-./comments.go
-./feed.go
-./like.go
-./minio.go
-./social.go
-./video.go

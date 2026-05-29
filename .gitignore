@@ -1,7 +1,6 @@
 ﻿.gocache/
 .tmp-go-cache/
 gocache_restore.tar
-config/config.yaml
 .tmp-go-cache
 .env
 .gocache

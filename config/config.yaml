@@ -2,20 +2,20 @@ server:
   port: 8080
 
 database:
-  host: localhost
+  host: 82.156.80.11
   port: 3307
   user: root
   password: 123456
   dbname: feedsystem
 
 redis:
-  host: localhost
+  host: 39.104.69.250
   port: 6379
   password: ""
   db: 0
 
 rabbitmq:
-  host: localhost
+  host: 39.104.69.250
   port: 5672
   username: admin
   password: password123
@@ -26,7 +26,7 @@ observability:
     api_addr: localhost:6060
     worker_addr: localhost:6061
 minio:
-  endpoint  : localhost:9000
+  endpoint  : 39.104.69.250:9000
   accessKey : admin
   secretKey : admin123456
   useSSL    : false

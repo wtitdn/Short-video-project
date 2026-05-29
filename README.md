@@ -86,6 +86,12 @@ shortvideo/
     └── backend/
         └── Dockerfile       
 ```
+在/etc下新建shortvideo文件夹，并将config.yaml放入该文件下
+```
+etc/
+└── shortvideo
+    └── config.yaml
+```
 上传到云端使用dockerfile进行docker镜像构建
 ```
 sudo docker build -f deploy/backend/Dockerfile -t video-api:latest .

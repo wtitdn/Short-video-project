@@ -14,7 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/wtitdn/renew_video/internal/controller/apierror"
 	"github.com/wtitdn/renew_video/internal/entity"
-
 	"github.com/wtitdn/renew_video/internal/usecase"
 	"gorm.io/gorm"
 )
@@ -36,13 +35,26 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 	if err := h.accountService.CreateAccount(c.Request.Context(), &entity.Account{
 		Username: req.Username,
 		Password: req.Password,
-	}); err != nil {
+		Email:    req.Email,
+	}, req.VerifyCode); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(200, gin.H{"message": "account created"})
 }
+func (h *AccountHandler) SendEmailCode(c *gin.Context) {
+	var req entity.SendEmailCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		return
+	}
 
+	if err := h.accountService.SendEmailCode(c.Request.Context(), req.Email); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"message": "email code sent"})
+}
 func (h *AccountHandler) Rename(c *gin.Context) {
 	var req entity.RenameRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

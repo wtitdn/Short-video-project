@@ -53,6 +53,7 @@ func (w *NotificationWorker) Run(ctx context.Context) error {
 	}
 	for {
 		select {
+		//Done为自身附带的只读channel
 		case <-ctx.Done():
 			return ctx.Err()
 		case d, ok := <-deliveries:

@@ -8,14 +8,19 @@ type Account struct {
 	RefreshToken string `json:"-"`
 	AvatarURL    string `gorm:"type:varchar(512)" json:"avatar_url,omitempty"`
 	Bio          string `gorm:"type:varchar(255)" json:"bio,omitempty"`
+	Email        string `gorm:"type:varchar(255)" json:"email,omitempty"`
 }
 
 // DTO
 type CreateAccountRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username   string `json:"username" binding:"required"`
+	Password   string `json:"password" binding:"required"`
+	Email      string `json:"email" binding:"required,email"`
+	VerifyCode string `json:"verify_code" binding:"required"`
 }
-
+type SendEmailCodeRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
 type RenameRequest struct {
 	NewUsername string `json:"new_username"`
 }

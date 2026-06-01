@@ -16,6 +16,7 @@ type Config struct {
 	RabbitMQ            RabbitMQConfig      `yaml:"rabbitmq"`
 	ObservabilityConfig ObservabilityConfig `yaml:"observability"`
 	Minio               MinioConfig         `yaml:"minio"`
+	SMTP                SMTPConfig          `yaml:"smtp"`
 }
 
 type ServerConfig struct {
@@ -34,6 +35,13 @@ type MinioConfig struct {
 	AccessKey string `yaml:"accessKey"`
 	SecretKey string `yaml:"secretKey"`
 	UseSSL    bool   `yaml:"useSSL"`
+}
+type SMTPConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	From     string `yaml:"from"`
 }
 type RedisConfig struct {
 	Host     string `yaml:"host"`

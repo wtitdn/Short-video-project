@@ -30,3 +30,9 @@ minio:
   accessKey : admin
   secretKey : admin123456
   useSSL    : false
+smtp:
+  host: smtp.qq.com
+  port: 465
+  username:
+  password:
+  from:

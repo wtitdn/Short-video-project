@@ -9,19 +9,20 @@ import (
 	"github.com/wtitdn/renew_video/internal/controller/http/handler"
 	"github.com/wtitdn/renew_video/internal/entity"
 	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/producer"
+	"github.com/wtitdn/renew_video/internal/middleware/ratelimit"
 	"github.com/wtitdn/renew_video/internal/repo"
 	"github.com/wtitdn/renew_video/internal/usecase"
 	"github.com/wtitdn/renew_video/internal/worker"
+	smtp "github.com/wtitdn/renew_video/pkg/SMTP"
 	"github.com/wtitdn/renew_video/pkg/jwt"
 	storage "github.com/wtitdn/renew_video/pkg/minio"
 	"github.com/wtitdn/renew_video/pkg/rabbitmq"
-	"github.com/wtitdn/renew_video/pkg/ratelimit"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
 	"gorm.io/gorm"
 )
 
 // 注册所有组件
-func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mio *storage.Minio) *gin.Engine {
+func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mio *storage.Minio, smt *smtp.SmtpClient) *gin.Engine {
 	r := gin.Default()
 	if err := r.SetTrustedProxies(nil); err != nil {
 		log.Printf("SetTrustedProxies failed: %v", err)
@@ -29,25 +30,27 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 	r.Static("/static", "./.run/uploads")
 	//minio
 	minioRepository := repo.NewMinioRepository(mio)
-	//防抖中间件
+	//限流中间件
 	loginLimiter := ratelimit.Limit(cache, "account_login", 10, time.Minute, ratelimit.KeyByIP)
 	registerLimiter := ratelimit.Limit(cache, "account_register", 5, time.Hour, ratelimit.KeyByIP)
 	likeLimiter := ratelimit.Limit(cache, "like_write", 30, time.Minute, ratelimit.KeyByAccount)
 	commentLimiter := ratelimit.Limit(cache, "comment_write", 10, time.Minute, ratelimit.KeyByAccount)
 	socialLimiter := ratelimit.Limit(cache, "social_write", 20, time.Minute, ratelimit.KeyByAccount)
+	//各服务装配顺序 repo->usecase->handler
 	//account
-	accountRepository := repo.NewAccountRepository(db)
 
-	accountService := usecase.NewAccountService(accountRepository, cache, minioRepository)
+	accountRepository := repo.NewAccountRepository(db)
+	accountService := usecase.NewAccountService(accountRepository, cache, minioRepository, smt)
 	accountHandler := handler.NewAccountHandler(accountService)
 	accountGroup := r.Group("/account")
 	{
-		accountGroup.POST("/register", registerLimiter, accountHandler.CreateAccount)
+		accountGroup.POST("/register", accountHandler.CreateAccount)
 		accountGroup.POST("/login", loginLimiter, accountHandler.Login)
 		accountGroup.POST("/changePassword", accountHandler.ChangePassword)
 		accountGroup.POST("/findByID", accountHandler.FindByID)
 		accountGroup.POST("/findByUsername", accountHandler.FindByUsername)
 		accountGroup.POST("/refresh", accountHandler.Refresh)
+		accountGroup.POST("/sendEmailCode", registerLimiter, accountHandler.SendEmailCode)
 	}
 	protectedAccountGroup := accountGroup.Group("")
 	//jwt
@@ -78,6 +81,7 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 		protectedVideoGroup.POST("/uploadVideo", videoHandler.UploadVideo)
 		protectedVideoGroup.POST("/uploadCover", videoHandler.UploadCover)
 		protectedVideoGroup.POST("/publish", videoHandler.PublishVideo)
+		protectedVideoGroup.POST("/delete", videoHandler.DeleteVideo)
 		protectedVideoGroup.POST("/chunk/init", videoHandler.InitChunkUpload)
 		protectedVideoGroup.POST("/chunk/part-url", videoHandler.CreateChunkPartURL)
 		protectedVideoGroup.POST("/chunk/complete", videoHandler.CompleteChunkUpload)

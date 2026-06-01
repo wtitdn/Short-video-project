@@ -13,6 +13,7 @@ import (
 	"github.com/wtitdn/renew_video/internal/entity"
 	"github.com/wtitdn/renew_video/internal/middleware/auth"
 	"github.com/wtitdn/renew_video/internal/repo"
+	smtp "github.com/wtitdn/renew_video/pkg/SMTP"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -22,6 +23,8 @@ type AccountService struct {
 	accountRepository *repo.AccountRepository
 	cache             *rediscache.Client
 	minioRepo         *repo.MinioRepository
+	rediscache        *rediscache.Client
+	smtpClient        *smtp.SmtpClient
 }
 
 var (
@@ -29,11 +32,43 @@ var (
 	ErrNewUsernameRequired = errors.New("new_username is required")
 )
 
-func NewAccountService(accountRepository *repo.AccountRepository, cache *rediscache.Client, minioRepo *repo.MinioRepository) *AccountService {
-	return &AccountService{accountRepository: accountRepository, cache: cache, minioRepo: minioRepo}
+func NewAccountService(accountRepository *repo.AccountRepository, cache *rediscache.Client, minioRepo *repo.MinioRepository, smtpClient *smtp.SmtpClient) *AccountService {
+	return &AccountService{accountRepository: accountRepository, cache: cache, minioRepo: minioRepo, smtpClient: smtpClient}
 }
+func (as *AccountService) SendEmailCode(ctx context.Context, mail string) error {
+	if as.cache == nil {
+		return errors.New("验证码服务不可用")
+	}
+	if as.smtpClient == nil {
+		return errors.New("邮件服务不可用")
+	}
+	code := as.smtpClient.GenerateCode()
+	if err := as.smtpClient.SendCode(mail, code); err != nil {
+		return err
+	}
+	key := as.cache.Key("email:register:code:%s", mail)
 
-func (as *AccountService) CreateAccount(ctx context.Context, account *entity.Account) error {
+	if err := as.cache.SetBytes(ctx, key, []byte(code), 5*time.Minute); err != nil {
+		return err
+	}
+
+	return nil
+}
+func (as *AccountService) CreateAccount(ctx context.Context, account *entity.Account, verifyCode string) error {
+	if as.cache == nil {
+		return errors.New("验证码服务不可用")
+	}
+	key := as.cache.Key("email:register:code:%s", account.Email)
+	codeBytes, err := as.cache.GetBytes(ctx, key)
+	if err != nil {
+		return errors.New("验证码不存在或已过期")
+	}
+	savedCode := strings.TrimSpace(string(codeBytes))
+	inputCode := strings.TrimSpace(verifyCode)
+	if savedCode != inputCode {
+		return errors.New("验证码错误")
+	}
+	//密码哈希存入
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(account.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -179,6 +214,10 @@ func (s *AccountService) UploadAvatar(ctx context.Context, accountID uint, objec
 	}
 
 	const imageBucket = "imagesys"
+
+	if err := s.minioRepo.EnsureBucket(ctx, imageBucket); err != nil {
+		return "", err
+	}
 
 	if err := s.minioRepo.UploadObject(ctx, imageBucket, objectKey, contentType, reader, size); err != nil {
 		return "", err

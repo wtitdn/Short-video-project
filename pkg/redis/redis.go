@@ -12,6 +12,7 @@ import (
 	"github.com/wtitdn/renew_video/internal/config"
 )
 
+// 该文件用于建立redis连接
 type Client struct {
 	rdb       *redis.Client
 	keyPrefix string

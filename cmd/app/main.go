@@ -11,6 +11,7 @@ import (
 	"github.com/wtitdn/renew_video/internal/config"
 	"github.com/wtitdn/renew_video/internal/controller/http"
 	"github.com/wtitdn/renew_video/internal/db"
+	smtp "github.com/wtitdn/renew_video/pkg/SMTP"
 	storage "github.com/wtitdn/renew_video/pkg/minio"
 	"github.com/wtitdn/renew_video/pkg/observability"
 	"github.com/wtitdn/renew_video/pkg/rabbitmq"
@@ -86,6 +87,14 @@ func main() {
 		defer rmq.Close()
 		log.Printf("RabbitMQ connected")
 	}
+	//启动SMTP服务
+	smt := smtp.NewSMTPClient(cfg.SMTP)
+	if err != nil {
+		log.Printf("SMTP config error (disabled): %v", err)
+	} else {
+		defer smt.Close()
+		log.Printf("RabbitMQ connected")
+	}
 	// Pprof
 	pprofServer, err := observability.NewPprofServer(
 		"API",
@@ -100,7 +109,7 @@ func main() {
 	}
 
 	// 设置路由
-	r := http.SetRouter(sqlDB, cache, rmq, mio)
+	r := http.SetRouter(sqlDB, cache, rmq, mio, smt)
 	log.Printf("Server is running on port %d", cfg.Server.Port)
 	if err := r.Run(":" + strconv.Itoa(cfg.Server.Port)); err != nil {
 		log.Fatalf("Failed to run server: %v", err)

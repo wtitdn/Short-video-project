@@ -11,6 +11,7 @@ import (
 	"github.com/wtitdn/renew_video/internal/config"
 	"github.com/wtitdn/renew_video/internal/controller/http"
 	"github.com/wtitdn/renew_video/internal/db"
+	"github.com/wtitdn/renew_video/internal/middleware/auth"
 	smtp "github.com/wtitdn/renew_video/pkg/SMTP"
 	storage "github.com/wtitdn/renew_video/pkg/minio"
 	"github.com/wtitdn/renew_video/pkg/observability"
@@ -19,12 +20,12 @@ import (
 )
 
 func main() {
-	// 加载 .env（本地开发）
+	// 鍔犺浇 .env锛堟湰鍦板紑鍙戯級
 	if err := godotenv.Load(); err != nil {
 		log.Println(".env not found; continuing")
 	}
 
-	// 加载配置
+	// 鍔犺浇閰嶇疆
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "../config/config.yaml"
@@ -39,19 +40,19 @@ func main() {
 	} else {
 		log.Printf("Config loaded from file: %s", configPath)
 	}
+	auth.SetJWTSecret(cfg.JWT.Secret)
 
-	// 连接数据库
-	//log.Printf("Database config: %v", cfg.Database)
+	// 杩炴帴鏁版嵁搴?	//log.Printf("Database config: %v", cfg.Database)
 	sqlDB, err := db.NewDB(cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to connect database: %v", err)
 	}
-	if err := db.AutoMigrate(sqlDB); err != nil {
+	if err := db.AutoMigrate(sqlDB, cfg.Admin); err != nil {
 		log.Fatalf("Failed to auto migrate database: %v", err)
 	}
 	defer db.CloseDB(sqlDB)
 
-	// 连接 Redis (可选，用于缓存)
+	// 杩炴帴 Redis (鍙€夛紝鐢ㄤ簬缂撳瓨)
 	cache, err := rediscache.NewFromEnv(&cfg.Redis)
 	if err != nil {
 		log.Printf("Redis config error (cache disabled): %v", err)
@@ -68,7 +69,7 @@ func main() {
 			log.Printf("Redis connected (cache enabled)")
 		}
 	}
-	//连接minio
+	//杩炴帴minio
 	mio, err := storage.NewMinio(&cfg.Minio)
 	if err != nil {
 		log.Printf("minio config error (disabled): %v", err)
@@ -78,7 +79,7 @@ func main() {
 		log.Printf("Minio connected (cache enabled)")
 	}
 
-	// 连接 RabbitMQ (可选，用于消息队列)
+	// 杩炴帴 RabbitMQ (鍙€夛紝鐢ㄤ簬娑堟伅闃熷垪)
 	rmq, err := rabbitmq.NewRabbitMQ(&cfg.RabbitMQ)
 	if err != nil {
 		log.Printf("RabbitMQ config error (disabled): %v", err)
@@ -87,7 +88,7 @@ func main() {
 		defer rmq.Close()
 		log.Printf("RabbitMQ connected")
 	}
-	//启动SMTP服务
+	//鍚姩SMTP鏈嶅姟
 	smt := smtp.NewSMTPClient(cfg.SMTP)
 	if err != nil {
 		log.Printf("SMTP config error (disabled): %v", err)
@@ -108,7 +109,7 @@ func main() {
 		defer pprofServer.Close()
 	}
 
-	// 设置路由
+	// 璁剧疆璺敱
 	r := http.SetRouter(sqlDB, cache, rmq, mio, smt)
 	log.Printf("Server is running on port %d", cfg.Server.Port)
 	if err := r.Run(":" + strconv.Itoa(cfg.Server.Port)); err != nil {

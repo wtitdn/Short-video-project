@@ -198,6 +198,23 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 		protectedMessageGroup.POST("/send", messageHandler.Send)
 		protectedMessageGroup.POST("/list", messageHandler.List)
 	}
+	//admin
+	adminRepository := repo.NewAdminRepository(db)
+	adminService := usecase.NewAdminService(adminRepository, cache, minioRepository, smt)
+	adminHandler := handler.NewAdminHandler(adminService)
+
+	adminGroup := r.Group("/admin")
+	{
+		adminGroup.POST("/login", adminHandler.Login)
+	}
+
+	protectedAdminGroup := adminGroup.Group("")
+	protectedAdminGroup.Use(jwt.AdminJWTAuth(adminRepository, cache))
+	{
+		protectedAdminGroup.POST("/logout", adminHandler.Logout)
+		protectedAdminGroup.POST("/sendCode", adminHandler.SendCode)
+		protectedAdminGroup.POST("/changePassword", adminHandler.ChangePassword)
+	}
 	//worker
 	timelineMQ, err := producer.NewTimelineMQ(rmq)
 	if err != nil {

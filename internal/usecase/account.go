@@ -164,9 +164,11 @@ func (as *AccountService) Login(ctx context.Context, username, password string) 
 	if err != nil {
 		return "", "", err
 	}
+	//向db存入token
 	if err := as.accountRepository.Login(ctx, account.ID, accessToken, refreshToken); err != nil {
 		return "", "", err
 	}
+	//向redis存入token
 	if as.cache != nil {
 		cacheCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()

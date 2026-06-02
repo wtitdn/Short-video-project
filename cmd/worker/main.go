@@ -12,6 +12,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/wtitdn/renew_video/internal/config"
 	"github.com/wtitdn/renew_video/internal/db"
+	"github.com/wtitdn/renew_video/internal/middleware/auth"
 	consume "github.com/wtitdn/renew_video/internal/middleware/rabbitmq/consume"
 	"github.com/wtitdn/renew_video/internal/repo"
 	"github.com/wtitdn/renew_video/pkg/observability"
@@ -48,14 +49,14 @@ func connectWithRetry(name string, maxRetries int, fn func() error) {
 		if wait > 30*time.Second {
 			wait = 30 * time.Second
 		}
-		log.Printf("%s 不可用，%v 后重试 (%d/%d)...", name, wait, i+1, maxRetries)
+		log.Printf("%s unavailable, retrying in %v (%d/%d)...", name, wait, i+1, maxRetries)
 		time.Sleep(wait)
 	}
-	log.Fatalf("%s: 超过最大重试次数", name)
+	log.Fatalf("%s: exceeded max retries", name)
 }
 
 func main() {
-	// 加载配置
+	// Load config.
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "../config/config.yaml"
@@ -70,7 +71,8 @@ func main() {
 	} else {
 		log.Printf("Config loaded from file: %s", configPath)
 	}
-	// 连接数据库（带重试）
+	auth.SetJWTSecret(cfg.JWT.Secret)
+	// Connect database with retry.
 	var sqlDB *gorm.DB
 	connectWithRetry("MySQL", 10, func() error {
 		var err error
@@ -79,7 +81,7 @@ func main() {
 	})
 	defer db.CloseDB(sqlDB)
 
-	// 连接 Redis（用于流行度更新）
+	// Connect Redis.
 	cache, err := rediscache.NewFromEnv(&cfg.Redis)
 	if err != nil {
 		log.Printf("Redis config error (popularity worker disabled): %v", err)
@@ -96,7 +98,7 @@ func main() {
 			log.Printf("Redis connected (popularity worker enabled)")
 		}
 	}
-	// 连接 RabbitMQ（带重试）
+	// Connect RabbitMQ.
 	url := "amqp://" + cfg.RabbitMQ.Username + ":" + cfg.RabbitMQ.Password + "@" + cfg.RabbitMQ.Host + ":" + strconv.Itoa(cfg.RabbitMQ.Port) + "/"
 	var conn *amqp.Connection
 	connectWithRetry("RabbitMQ", 10, func() error {
@@ -105,13 +107,13 @@ func main() {
 		return err
 	})
 	defer conn.Close()
-	// 创建 RabbitMQ 通道
+	// Open RabbitMQ channel.
 	ch, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("Failed to open rabbitmq channel: %v", err)
 	}
 	defer ch.Close()
-	// 声明 Social 交换机和队列
+	// Declare RabbitMQ topologies.
 	if err := declareSocialTopology(ch); err != nil {
 		log.Fatalf("Failed to declare social topology: %v", err)
 	}
@@ -144,7 +146,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	//检测连接
+	// Start pprof server.
 	pprofServer, err := observability.NewPprofServer(
 		"Worker",
 		cfg.ObservabilityConfig.Pprof.Enabled,

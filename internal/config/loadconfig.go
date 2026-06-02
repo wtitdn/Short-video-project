@@ -17,6 +17,8 @@ type Config struct {
 	ObservabilityConfig ObservabilityConfig `yaml:"observability"`
 	Minio               MinioConfig         `yaml:"minio"`
 	SMTP                SMTPConfig          `yaml:"smtp"`
+	Admin               AdminConfig         `yaml:"admin"`
+	JWT                 JWTConfig           `yaml:"jwt"`
 }
 
 type ServerConfig struct {
@@ -42,6 +44,14 @@ type SMTPConfig struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 	From     string `yaml:"from"`
+}
+type AdminConfig struct {
+	Name     string `yaml:"name"`
+	Password string `yaml:"password"`
+	Email    string `yaml:"email"`
+}
+type JWTConfig struct {
+	Secret string `yaml:"secret"`
 }
 type RedisConfig struct {
 	Host     string `yaml:"host"`
@@ -154,6 +164,9 @@ func ApplyEnvOverrides(cfg *Config) {
 			cfg.Minio.UseSSL = useSSL
 		}
 	}
+	if v := os.Getenv("JWT_SECRET"); v != "" {
+		cfg.JWT.Secret = v
+	}
 
 }
 
@@ -192,6 +205,9 @@ func DefaultLocalConfig() Config {
 			Port:     5672,
 			Username: "admin",
 			Password: "password123",
+		},
+		JWT: JWTConfig{
+			Secret: "local-dev-jwt-secret-change-me",
 		},
 		ObservabilityConfig: ObservabilityConfig{
 			Pprof: PprofConfig{

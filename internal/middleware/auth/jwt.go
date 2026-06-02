@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,13 +15,21 @@ import (
 )
 
 var (
-	jwtSecretOnce sync.Once
-	jwtSecretKey  []byte
+	jwtSecretOnce       sync.Once
+	jwtSecretKey        []byte
+	configuredJWTSecret string
 )
+
+func SetJWTSecret(secret string) {
+	configuredJWTSecret = strings.TrimSpace(secret)
+}
 
 func jwtSecret() []byte {
 	jwtSecretOnce.Do(func() {
-		secret := os.Getenv("JWT_SECRET")
+		secret := configuredJWTSecret
+		if secret == "" {
+			secret = os.Getenv("JWT_SECRET")
+		}
 		if secret == "" {
 			b := make([]byte, 32)
 			if _, err := rand.Read(b); err != nil {

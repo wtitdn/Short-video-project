@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/wtitdn/renew_video/internal/controller/http/handler"
 	"github.com/wtitdn/renew_video/internal/entity"
+	"github.com/wtitdn/renew_video/internal/middleware/captcha"
 	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/producer"
 	"github.com/wtitdn/renew_video/internal/middleware/ratelimit"
 	"github.com/wtitdn/renew_video/internal/repo"
@@ -38,14 +39,15 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 	socialLimiter := ratelimit.Limit(cache, "social_write", 20, time.Minute, ratelimit.KeyByAccount)
 	//各服务装配顺序 repo->usecase->handler
 	//account
-
+	accountCaptcha := captcha.NewCaptchaRedis(80, 240, cache)
 	accountRepository := repo.NewAccountRepository(db)
-	accountService := usecase.NewAccountService(accountRepository, cache, minioRepository, smt)
+	accountService := usecase.NewAccountService(accountRepository, cache, minioRepository, smt, accountCaptcha)
 	accountHandler := handler.NewAccountHandler(accountService)
 	accountGroup := r.Group("/account")
 	{
 		accountGroup.POST("/register", accountHandler.CreateAccount)
 		accountGroup.POST("/login", loginLimiter, accountHandler.Login)
+		accountGroup.GET("/getCaptcha", accountHandler.GetCaptcha)
 		accountGroup.POST("/changePassword", accountHandler.ChangePassword)
 		accountGroup.POST("/findByID", accountHandler.FindByID)
 		accountGroup.POST("/findByUsername", accountHandler.FindByUsername)
@@ -131,7 +133,7 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 		socialMQ = nil
 	}
 	socialRepository := repo.NewSocialRepository(db)
-	socialService := usecase.NewSocialService(socialRepository, accountRepository, socialMQ)
+	socialService := usecase.NewSocialService(socialRepository, accountRepository, minioRepository, socialMQ)
 	socialHandler := handler.NewSocialHandler(socialService)
 	socialGroup := r.Group("/social")
 	protectedSocialGroup := socialGroup.Group("")

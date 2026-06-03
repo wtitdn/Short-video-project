@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
+	"strings"
 
 	"github.com/wtitdn/renew_video/internal/entity"
 	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/producer"
@@ -12,11 +14,12 @@ import (
 type SocialService struct {
 	repo        *repo.SocialRepository
 	accountrepo *repo.AccountRepository
+	minioRepo   *repo.MinioRepository
 	socialMQ    *producer.SocialMQ
 }
 
-func NewSocialService(repo *repo.SocialRepository, accountrepo *repo.AccountRepository, socialMQ *producer.SocialMQ) *SocialService {
-	return &SocialService{repo: repo, accountrepo: accountrepo, socialMQ: socialMQ}
+func NewSocialService(repo *repo.SocialRepository, accountrepo *repo.AccountRepository, minioRepo *repo.MinioRepository, socialMQ *producer.SocialMQ) *SocialService {
+	return &SocialService{repo: repo, accountrepo: accountrepo, minioRepo: minioRepo, socialMQ: socialMQ}
 }
 
 func (s *SocialService) Follow(ctx context.Context, social *entity.Social) error {
@@ -71,7 +74,12 @@ func (s *SocialService) GetAllFollowers(ctx context.Context, VloggerID uint) ([]
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.GetAllFollowers(ctx, VloggerID)
+	accounts, err := s.repo.GetAllFollowers(ctx, VloggerID)
+	if err != nil {
+		return nil, err
+	}
+	s.fillAvatarURLs(ctx, accounts)
+	return accounts, nil
 }
 
 func (s *SocialService) GetAllVloggers(ctx context.Context, FollowerID uint) ([]*entity.Account, error) {
@@ -79,7 +87,12 @@ func (s *SocialService) GetAllVloggers(ctx context.Context, FollowerID uint) ([]
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.GetAllVloggers(ctx, FollowerID)
+	accounts, err := s.repo.GetAllVloggers(ctx, FollowerID)
+	if err != nil {
+		return nil, err
+	}
+	s.fillAvatarURLs(ctx, accounts)
+	return accounts, nil
 }
 
 func (s *SocialService) CountFollowers(ctx context.Context, vloggerID uint) (int64, error) {
@@ -100,4 +113,29 @@ func (s *SocialService) IsFollowed(ctx context.Context, social *entity.Social) (
 		return false, err
 	}
 	return s.repo.IsFollowed(ctx, social)
+}
+
+func (s *SocialService) fillAvatarURLs(ctx context.Context, accounts []*entity.Account) {
+	if s.minioRepo == nil {
+		return
+	}
+	for _, account := range accounts {
+		if account == nil || account.AvatarURL == "" || isExternalAvatarURL(account.AvatarURL) {
+			continue
+		}
+		avatarURL, err := s.minioRepo.PresignedGetURL(ctx, avatarBucket, account.AvatarURL, avatarExpiry)
+		if err != nil {
+			log.Printf("failed to presign avatar %q: %v", account.AvatarURL, err)
+			continue
+		}
+		account.AvatarURL = avatarURL
+	}
+}
+
+func isExternalAvatarURL(value string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "data:") ||
+		strings.HasPrefix(lower, "blob:")
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/wtitdn/renew_video/internal/entity"
 	"github.com/wtitdn/renew_video/internal/middleware/auth"
+	"github.com/wtitdn/renew_video/internal/middleware/captcha"
 	"github.com/wtitdn/renew_video/internal/repo"
 	smtp "github.com/wtitdn/renew_video/pkg/SMTP"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
@@ -23,8 +24,8 @@ type AccountService struct {
 	accountRepository *repo.AccountRepository
 	cache             *rediscache.Client
 	minioRepo         *repo.MinioRepository
-	rediscache        *rediscache.Client
 	smtpClient        *smtp.SmtpClient
+	captchaClient     *captcha.CaptchaClient
 }
 
 var (
@@ -32,8 +33,13 @@ var (
 	ErrNewUsernameRequired = errors.New("new_username is required")
 )
 
-func NewAccountService(accountRepository *repo.AccountRepository, cache *rediscache.Client, minioRepo *repo.MinioRepository, smtpClient *smtp.SmtpClient) *AccountService {
-	return &AccountService{accountRepository: accountRepository, cache: cache, minioRepo: minioRepo, smtpClient: smtpClient}
+const (
+	avatarBucket = "imagesys"
+	avatarExpiry = 24 * time.Hour
+)
+
+func NewAccountService(accountRepository *repo.AccountRepository, cache *rediscache.Client, minioRepo *repo.MinioRepository, smtpClient *smtp.SmtpClient, captchaClient *captcha.CaptchaClient) *AccountService {
+	return &AccountService{accountRepository: accountRepository, cache: cache, minioRepo: minioRepo, smtpClient: smtpClient, captchaClient: captchaClient}
 }
 func (as *AccountService) SendEmailCode(ctx context.Context, mail string) error {
 	if as.cache == nil {
@@ -136,6 +142,7 @@ func (as *AccountService) FindByID(ctx context.Context, id uint) (*entity.Accoun
 	if account, err := as.accountRepository.FindByID(ctx, id); err != nil {
 		return nil, err
 	} else {
+		as.fillAvatarURL(ctx, account)
 		return account, nil
 	}
 }
@@ -144,11 +151,29 @@ func (as *AccountService) FindByUsername(ctx context.Context, username string) (
 	if account, err := as.accountRepository.FindByUsername(ctx, username); err != nil {
 		return nil, err
 	} else {
+		as.fillAvatarURL(ctx, account)
 		return account, nil
 	}
 }
+func (as *AccountService) GetCaptcha(ctx context.Context) (b64s string, err error) {
+	ip, _ := ctx.Value("client_ip").(string)
+	_, b64s, _, err = as.captchaClient.GenerateIdAndImage(ip)
+	if err != nil {
+		return "", err
+	}
+	return b64s, nil
+}
 
+func (as *AccountService) VerifyCaptcha(ctx context.Context, captcha string) (bool, error) {
+	ip, _ := ctx.Value("client_ip").(string)
+	result, err := as.captchaClient.Verify(ip, captcha)
+	if err != nil {
+		return false, err
+	}
+	return result, nil
+}
 func (as *AccountService) Login(ctx context.Context, username, password string) (string, string, error) {
+
 	account, err := as.FindByUsername(ctx, username)
 	if err != nil {
 		return "", "", err
@@ -215,22 +240,20 @@ func (s *AccountService) UploadAvatar(ctx context.Context, accountID uint, objec
 		return "", errors.New("minio repo is nil")
 	}
 
-	const imageBucket = "imagesys"
-
-	if err := s.minioRepo.EnsureBucket(ctx, imageBucket); err != nil {
+	if err := s.minioRepo.EnsureBucket(ctx, avatarBucket); err != nil {
 		return "", err
 	}
 
-	if err := s.minioRepo.UploadObject(ctx, imageBucket, objectKey, contentType, reader, size); err != nil {
+	if err := s.minioRepo.UploadObject(ctx, avatarBucket, objectKey, contentType, reader, size); err != nil {
 		return "", err
 	}
 
-	avatarURL, err := s.minioRepo.PresignedGetURL(ctx, imageBucket, objectKey, 24*time.Hour)
+	if err := s.UpdateAvatar(ctx, accountID, objectKey); err != nil {
+		return "", err
+	}
+
+	avatarURL, err := s.minioRepo.PresignedGetURL(ctx, avatarBucket, objectKey, avatarExpiry)
 	if err != nil {
-		return "", err
-	}
-
-	if err := s.UpdateAvatar(ctx, accountID, avatarURL); err != nil {
 		return "", err
 	}
 
@@ -241,7 +264,14 @@ func (as *AccountService) UpdateAvatar(ctx context.Context, accountID uint, avat
 }
 
 func (as *AccountService) FindAll(ctx context.Context) ([]*entity.Account, error) {
-	return as.accountRepository.FindAll(ctx)
+	accounts, err := as.accountRepository.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, account := range accounts {
+		as.fillAvatarURL(ctx, account)
+	}
+	return accounts, nil
 }
 
 func (as *AccountService) UpdateProfile(ctx context.Context, accountID uint, req *entity.UpdateProfileRequest) error {
@@ -256,6 +286,29 @@ func (as *AccountService) UpdateProfile(ctx context.Context, accountID uint, req
 		return errors.New("nothing to update")
 	}
 	return as.accountRepository.UpdateFields(ctx, accountID, updates)
+}
+
+func (as *AccountService) fillAvatarURL(ctx context.Context, account *entity.Account) {
+	if account == nil || account.AvatarURL == "" || as.minioRepo == nil {
+		return
+	}
+	if isExternalURL(account.AvatarURL) {
+		return
+	}
+	avatarURL, err := as.minioRepo.PresignedGetURL(ctx, avatarBucket, account.AvatarURL, avatarExpiry)
+	if err != nil {
+		log.Printf("failed to presign avatar %q: %v", account.AvatarURL, err)
+		return
+	}
+	account.AvatarURL = avatarURL
+}
+
+func isExternalURL(value string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "data:") ||
+		strings.HasPrefix(lower, "blob:")
 }
 
 func (as *AccountService) RefreshAccessToken(ctx context.Context, refreshToken string) (string, uint, string, error) {

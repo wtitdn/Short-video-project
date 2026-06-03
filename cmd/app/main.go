@@ -20,12 +20,12 @@ import (
 )
 
 func main() {
-	// 鍔犺浇 .env锛堟湰鍦板紑鍙戯級
+	// Load .env if present; continue without it in deployed environments.
 	if err := godotenv.Load(); err != nil {
 		log.Println(".env not found; continuing")
 	}
 
-	// 鍔犺浇閰嶇疆
+	// Load application config.
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "../config/config.yaml"
@@ -42,7 +42,7 @@ func main() {
 	}
 	auth.SetJWTSecret(cfg.JWT.Secret)
 
-	// 杩炴帴鏁版嵁搴?	//log.Printf("Database config: %v", cfg.Database)
+	// Initialize database and run migrations.
 	sqlDB, err := db.NewDB(cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to connect database: %v", err)
@@ -52,7 +52,7 @@ func main() {
 	}
 	defer db.CloseDB(sqlDB)
 
-	// 杩炴帴 Redis (鍙€夛紝鐢ㄤ簬缂撳瓨)
+	// Initialize Redis; disable cache if it is unavailable.
 	cache, err := rediscache.NewFromEnv(&cfg.Redis)
 	if err != nil {
 		log.Printf("Redis config error (cache disabled): %v", err)
@@ -69,17 +69,18 @@ func main() {
 			log.Printf("Redis connected (cache enabled)")
 		}
 	}
-	//杩炴帴minio
+
+	// Initialize Minio; disable object storage if it is unavailable.
 	mio, err := storage.NewMinio(&cfg.Minio)
 	if err != nil {
 		log.Printf("minio config error (disabled): %v", err)
 		mio = nil
 	} else {
 		defer mio.Close()
-		log.Printf("Minio connected (cache enabled)")
+		log.Printf("Minio connected")
 	}
 
-	// 杩炴帴 RabbitMQ (鍙€夛紝鐢ㄤ簬娑堟伅闃熷垪)
+	// Initialize RabbitMQ; disable message queue if it is unavailable.
 	rmq, err := rabbitmq.NewRabbitMQ(&cfg.RabbitMQ)
 	if err != nil {
 		log.Printf("RabbitMQ config error (disabled): %v", err)
@@ -88,15 +89,15 @@ func main() {
 		defer rmq.Close()
 		log.Printf("RabbitMQ connected")
 	}
-	//鍚姩SMTP鏈嶅姟
+
+	// Initialize SMTP mail client.
 	smt := smtp.NewSMTPClient(cfg.SMTP)
-	if err != nil {
-		log.Printf("SMTP config error (disabled): %v", err)
-	} else {
+	if smt != nil {
 		defer smt.Close()
-		log.Printf("RabbitMQ connected")
+		log.Printf("SMTP client initialized")
 	}
-	// Pprof
+
+	// Start pprof server when enabled.
 	pprofServer, err := observability.NewPprofServer(
 		"API",
 		cfg.ObservabilityConfig.Pprof.Enabled,
@@ -109,7 +110,7 @@ func main() {
 		defer pprofServer.Close()
 	}
 
-	// 璁剧疆璺敱
+	// Register routes and start HTTP server.
 	r := http.SetRouter(sqlDB, cache, rmq, mio, smt)
 	log.Printf("Server is running on port %d", cfg.Server.Port)
 	if err := r.Run(":" + strconv.Itoa(cfg.Server.Port)); err != nil {

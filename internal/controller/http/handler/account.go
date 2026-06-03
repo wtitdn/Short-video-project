@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -128,11 +129,31 @@ func (h *AccountHandler) FindByUsername(c *gin.Context) {
 		c.JSON(200, account)
 	}
 }
-
+func (h *AccountHandler) GetCaptcha(c *gin.Context) {
+	ip := c.ClientIP()
+	ctx := context.WithValue(c.Request.Context(), "client_ip", ip)
+	b64s, err := h.accountService.GetCaptcha(ctx)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"captcha": b64s})
+}
 func (h *AccountHandler) Login(c *gin.Context) {
 	var req entity.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	ip := c.ClientIP()
+	ctx := context.WithValue(c.Request.Context(), "client_ip", ip)
+	result, err := h.accountService.VerifyCaptcha(ctx, req.Captcha)
+	if err != nil {
+		c.JSON(401, gin.H{"验证码过期": err.Error()})
+		return
+	}
+	if result == false {
+		c.JSON(401, gin.H{"error": "captcha is invalid"})
 		return
 	}
 	account, err := h.accountService.FindByUsername(c.Request.Context(), req.Username)

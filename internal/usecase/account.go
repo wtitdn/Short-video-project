@@ -12,7 +12,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/wtitdn/renew_video/internal/entity"
 	"github.com/wtitdn/renew_video/internal/middleware/auth"
-	"github.com/wtitdn/renew_video/internal/middleware/captcha"
 	"github.com/wtitdn/renew_video/internal/repo"
 	smtp "github.com/wtitdn/renew_video/pkg/SMTP"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
@@ -25,7 +24,12 @@ type AccountService struct {
 	cache             *rediscache.Client
 	minioRepo         *repo.MinioRepository
 	smtpClient        *smtp.SmtpClient
-	captchaClient     *captcha.CaptchaClient
+	captchaClient     CaptchaService
+}
+
+type CaptchaService interface {
+	GenerateIdAndImage(ip string) (id, b64s, ans string, err error)
+	Verify(ip string, answer string) (bool, error)
 }
 
 var (
@@ -38,7 +42,8 @@ const (
 	avatarExpiry = 24 * time.Hour
 )
 
-func NewAccountService(accountRepository *repo.AccountRepository, cache *rediscache.Client, minioRepo *repo.MinioRepository, smtpClient *smtp.SmtpClient, captchaClient *captcha.CaptchaClient) *AccountService {
+// 需要测试captcha的话，修改captcha为测试文件
+func NewAccountService(accountRepository *repo.AccountRepository, cache *rediscache.Client, minioRepo *repo.MinioRepository, smtpClient *smtp.SmtpClient, captchaClient CaptchaService) *AccountService {
 	return &AccountService{accountRepository: accountRepository, cache: cache, minioRepo: minioRepo, smtpClient: smtpClient, captchaClient: captchaClient}
 }
 func (as *AccountService) SendEmailCode(ctx context.Context, mail string) error {
@@ -198,12 +203,13 @@ func (as *AccountService) Login(ctx context.Context, username, password string) 
 		cacheCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()
 
-		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d", account.ID), []byte(accessToken), 24*time.Hour); err != nil {
+		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d:token", account.ID), []byte(accessToken), 24*time.Hour); err != nil {
 			log.Printf("failed to set cache: %v", err)
 		}
-		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d:refresh", account.ID), []byte(refreshToken), 7*24*time.Hour); err != nil {
+		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d:refreshToken", account.ID), []byte(refreshToken), 7*24*time.Hour); err != nil {
 			log.Printf("failed to set refresh cache: %v", err)
 		}
+		//根据refreshtoken设置id 把refreshtoken变成key进行存储
 		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("refresh:%s", refreshToken), []byte(strconv.FormatUint(uint64(account.ID), 10)), 7*24*time.Hour); err != nil {
 			log.Printf("failed to set refresh lookup: %v", err)
 		}

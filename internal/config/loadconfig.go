@@ -19,6 +19,7 @@ type Config struct {
 	SMTP                SMTPConfig          `yaml:"smtp"`
 	Admin               AdminConfig         `yaml:"admin"`
 	JWT                 JWTConfig           `yaml:"jwt"`
+	ApiKeyConfig        ApiKeyConfig        `yaml:"apikey"`
 }
 
 type ServerConfig struct {
@@ -52,6 +53,9 @@ type AdminConfig struct {
 }
 type JWTConfig struct {
 	Secret string `yaml:"secret"`
+}
+type ApiKeyConfig struct {
+	Apikey string `yaml:"apikey"`
 }
 type RedisConfig struct {
 	Host     string `yaml:"host"`

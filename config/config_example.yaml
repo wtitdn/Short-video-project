@@ -36,3 +36,11 @@ smtp:
   username:
   password:
   from:
+admin:
+  name : admin
+  password :
+  email:
+secret:
+  secret :
+apikey:
+  apikey :

@@ -4,13 +4,22 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	deepseek "github.com/cohesion-org/deepseek-go"
+	"github.com/wtitdn/renew_video/internal/config"
 )
 
 func main() {
 	// Set up the Deepseek client
-	client := deepseek.NewClient("sk-ad4a1acec470402cb8b0c63e2342d03c") // Empty API key triggers env lookup for "DEEPSEEK_API_KEY"
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "../config/config.yaml"
+	}
+	cfg, _, err := config.LoadLocalDev(configPath)
+	apikey := cfg.ApiKeyConfig.Apikey
+	print(apikey)
+	client := deepseek.NewClient(apikey) // Empty API key triggers env lookup for "DEEPSEEK_API_KEY"
 
 	// Create a chat completion request
 	request := &deepseek.ChatCompletionRequest{

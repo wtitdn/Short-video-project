@@ -18,6 +18,7 @@ func NewFeedHandler(service *usecase.FeedService) *FeedHandler {
 	return &FeedHandler{service: service}
 }
 
+// 展示近期视频 默认首页推荐视频
 func (f *FeedHandler) ListLatest(c *gin.Context) {
 	var req entity.ListLatestRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -44,6 +45,7 @@ func (f *FeedHandler) ListLatest(c *gin.Context) {
 	c.JSON(200, feedItems)
 }
 
+// 根据点赞榜单展示
 func (f *FeedHandler) ListLikesCount(c *gin.Context) {
 	var req entity.ListLikesCountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -93,6 +95,7 @@ func (f *FeedHandler) ListLikesCount(c *gin.Context) {
 	c.JSON(200, feedItems)
 }
 
+// 根据关注列表展示
 func (f *FeedHandler) ListByFollowing(c *gin.Context) {
 	var req entity.ListByFollowingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -119,6 +122,7 @@ func (f *FeedHandler) ListByFollowing(c *gin.Context) {
 	c.JSON(200, feedItems)
 }
 
+// 根据点赞数搜索视频
 func (f *FeedHandler) ListByPopularity(c *gin.Context) {
 	var req entity.ListByPopularityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -170,6 +174,7 @@ func (f *FeedHandler) ListByPopularity(c *gin.Context) {
 	c.JSON(200, resp)
 }
 
+// 空数据处理，防止前端拿到空切片无法处理
 func nonNilFeedVideoItems(items []entity.FeedVideoItem) []entity.FeedVideoItem {
 	if items == nil {
 		return []entity.FeedVideoItem{}
@@ -177,6 +182,7 @@ func nonNilFeedVideoItems(items []entity.FeedVideoItem) []entity.FeedVideoItem {
 	return items
 }
 
+// 暂时没用到
 func (h *FeedHandler) ListByTag(c *gin.Context) {
 	var req struct {
 		TagName string `json:"tag_name"`

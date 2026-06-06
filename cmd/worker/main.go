@@ -140,6 +140,7 @@ func main() {
 	likeWorker := consume.NewLikeWorker(ch, likeRepo, videoRepo, cache, likeQueue)
 	commentWorker := consume.NewCommentWorker(ch, commentRepo, videoRepo, commentQueue)
 	var popularityWorker *consume.PopularityWorker
+	//如果有redis 启动流行度的consumer
 	if cache != nil {
 		popularityWorker = consume.NewPopularityWorker(ch, cache, popularityQueue)
 	}

@@ -26,6 +26,8 @@ func (repo *FeedRepository) ListLatest(ctx context.Context, limit int, latestBef
 	}
 	return videos, nil
 }
+
+// 根据指标（点赞数）进行视频的查找
 func (repo *FeedRepository) ListLikesCountWithCursor(ctx context.Context, limit int, cursor *entity.LikesCountCursor) ([]*entity.Video, error) {
 	videos := []*entity.Video{}
 	query := repo.db.WithContext(ctx).Model(&entity.Video{}).
@@ -44,6 +46,8 @@ func (repo *FeedRepository) ListLikesCountWithCursor(ctx context.Context, limit 
 	return videos, nil
 
 }
+
+// feed流查找（按照关注者查找）
 func (repo *FeedRepository) ListByFollowing(ctx context.Context, limit int, viewerAccountID uint, latestBefore time.Time) ([]*entity.Video, error) {
 	videos := []*entity.Video{}
 	query := repo.db.WithContext(ctx).Model(&entity.Video{}).
@@ -63,11 +67,14 @@ func (repo *FeedRepository) ListByFollowing(ctx context.Context, limit int, view
 	}
 	return videos, nil
 }
+
+// feed流查找（按照流行度查找）
 func (repo *FeedRepository) ListByPopularity(ctx context.Context, limit int, popularityBefore int64, timeBefore time.Time, idBefore uint) ([]*entity.Video, error) {
 	videos := []*entity.Video{}
 	query := repo.db.WithContext(ctx).Model(&entity.Video{}).
 		Order("popularity DESC, create_time DESC, id DESC")
 	// 只有当游标完整提供时才加过滤（popularity 允许为 0）
+	//分页查找逻辑，如果有提供ID和create_time才会调用这个
 	if !timeBefore.IsZero() && idBefore > 0 {
 		query = query.Where(
 			"(popularity < ?) OR (popularity = ? AND create_time < ?) OR (popularity = ? AND create_time = ? AND id < ?)",

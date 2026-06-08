@@ -1,4 +1,3 @@
-// internal/auth/jwt.go
 package jwt
 
 import (
@@ -37,9 +36,12 @@ func JWTAuth(accountRepo *repo.AccountRepository, cache *rediscache.Client) gin.
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
+		//对比redis和db里面的token
 		check(c, claims, tokenString, accountRepo, cache)
 	}
 }
+
+// AdminJWTAuth check jwt token and ensure it matches the currently stored token.
 func AdminJWTAuth(adminRepo *repo.AdminRepository, cache *rediscache.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -55,7 +57,7 @@ func AdminJWTAuth(adminRepo *repo.AdminRepository, cache *rediscache.Client) gin
 		}
 
 		tokenString := parts[1]
-
+		// token解析为用户信息
 		claims, err := auth.ParseToken(tokenString)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
@@ -77,12 +79,14 @@ func AdminJWTAuth(adminRepo *repo.AdminRepository, cache *rediscache.Client) gin
 			defer cancel()
 
 			b, err := cache.GetBytes(cacheCtx, key)
+			// 如果redis力有数据，比较
 			if err == nil {
 				if string(b) != tokenString {
 					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
 					return
 				}
-
+				// gin上下文更新
+				
 				c.Set("adminID", admin.AdminID)
 				c.Set("email", admin.AdminEmail)
 				c.Set("adminName", admin.AdminName)
@@ -104,7 +108,7 @@ func AdminJWTAuth(adminRepo *repo.AdminRepository, cache *rediscache.Client) gin
 				log.Printf("failed to set admin cache: %v", err)
 			}
 		}
-
+		// gin上下文更新
 		c.Set("adminID", admin.AdminID)
 		c.Set("email", admin.AdminEmail)
 		c.Set("adminName", admin.AdminName)

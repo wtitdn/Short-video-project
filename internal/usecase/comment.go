@@ -5,9 +5,11 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/wtitdn/renew_video/internal/controller/apierror"
 	"github.com/wtitdn/renew_video/internal/entity"
+	llm2 "github.com/wtitdn/renew_video/internal/middleware/llm"
 	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/producer"
 	"github.com/wtitdn/renew_video/internal/repo"
 	rediscache "github.com/wtitdn/renew_video/pkg/redis"
@@ -21,10 +23,11 @@ type CommentService struct {
 	cache           *rediscache.Client
 	commentMQ       *producer.CommentMQ
 	popularityMQ    *producer.PopularityMQ
+	llm             *llm2.LLMClient
 }
 
-func NewCommentService(repo *repo.CommentRepository, videoRepo *repo.VideoRepository, cache *rediscache.Client, commentMQ *producer.CommentMQ, popularityMQ *producer.PopularityMQ) *CommentService {
-	return &CommentService{repo: repo, VideoRepository: videoRepo, cache: cache, commentMQ: commentMQ, popularityMQ: popularityMQ}
+func NewCommentService(ar *repo.AccountRepository, repo *repo.CommentRepository, videoRepo *repo.VideoRepository, cache *rediscache.Client, commentMQ *producer.CommentMQ, popularityMQ *producer.PopularityMQ, llm *llm2.LLMClient) *CommentService {
+	return &CommentService{ar: ar, repo: repo, VideoRepository: videoRepo, cache: cache, commentMQ: commentMQ, popularityMQ: popularityMQ, llm: llm}
 }
 
 func (s *CommentService) Publish(ctx context.Context, comment *entity.Comment) error {
@@ -151,4 +154,34 @@ func (s *CommentService) notifyMentions(ctx context.Context, comment *entity.Com
 		}
 		err = s.repo.CreateNotification(ctx, notif)
 	}
+}
+
+func (s *CommentService) AiSummary(ctx context.Context, videoID uint, comments []entity.Comment) (string, error) {
+	if s.llm == nil {
+		return "", errors.New("llm client is nil")
+	}
+
+	var key string
+	if s.cache != nil {
+		key = s.cache.Key("ai_summary:%d", videoID)
+		result, err := s.cache.GetBytes(ctx, key)
+		if err == nil {
+			return string(result), nil
+		}
+	}
+	//没有key存在，也就是尚未进行summary
+	//30s作为超时
+	llmCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	res, err := s.llm.LLMSummary(llmCtx, comments)
+
+	if err != nil {
+		return "", err
+	}
+
+	if s.cache != nil {
+		_ = s.cache.SetBytes(ctx, key, []byte(res), 1*time.Hour)
+	}
+
+	return res, nil
 }

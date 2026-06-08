@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/wtitdn/renew_video/internal/controller/apierror"
 	"github.com/wtitdn/renew_video/internal/entity"
@@ -95,4 +97,31 @@ func (h *CommentHandler) GetAllComments(c *gin.Context) {
 		comments = []entity.Comment{}
 	}
 	c.JSON(200, comments)
+}
+func (h *CommentHandler) AiSummary(c *gin.Context) {
+	var req entity.GetAllCommentsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	if req.VideoID == 0 {
+		c.JSON(400, gin.H{"error": "video_id is required"})
+		return
+	}
+	comments, err := h.service.GetAll(c.Request.Context(), req.VideoID)
+	if err != nil {
+		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	if len(comments) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "comments is empty"})
+		return
+	}
+	res, err := h.service.AiSummary(c.Request.Context(), req.VideoID, comments)
+	if err != nil {
+		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, entity.AiSummaryResponse{Rep: res})
 }

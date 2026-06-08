@@ -9,6 +9,7 @@ import (
 	"github.com/wtitdn/renew_video/internal/controller/http/handler"
 	"github.com/wtitdn/renew_video/internal/entity"
 	"github.com/wtitdn/renew_video/internal/middleware/captcha"
+	"github.com/wtitdn/renew_video/internal/middleware/llm"
 	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/producer"
 	"github.com/wtitdn/renew_video/internal/middleware/ratelimit"
 	"github.com/wtitdn/renew_video/internal/repo"
@@ -23,7 +24,7 @@ import (
 )
 
 // 注册所有组件
-func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mio *storage.Minio, smt *smtp.SmtpClient) *gin.Engine {
+func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mio *storage.Minio, smt *smtp.SmtpClient, llm *llm.LLMClient) *gin.Engine {
 	r := gin.Default()
 	if err := r.SetTrustedProxies(nil); err != nil {
 		log.Printf("SetTrustedProxies failed: %v", err)
@@ -37,6 +38,7 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 	likeLimiter := ratelimit.Limit(cache, "like_write", 30, time.Minute, ratelimit.KeyByAccount)
 	commentLimiter := ratelimit.Limit(cache, "comment_write", 10, time.Minute, ratelimit.KeyByAccount)
 	socialLimiter := ratelimit.Limit(cache, "social_write", 20, time.Minute, ratelimit.KeyByAccount)
+	aiSummaryLimiter := ratelimit.Limit(cache, "ai_summary", 1, time.Minute, ratelimit.KeyByAccount)
 	//各服务装配顺序 repo->usecase->handler
 	//account
 	accountCaptcha := captcha.NewCaptchaRedis(80, 240, cache)
@@ -114,10 +116,11 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 		log.Printf("CommentMQ init failed (mq disabled): %v", err)
 		commentMQ = nil
 	}
-	commentService := usecase.NewCommentService(commentRepository, videoRepository, cache, commentMQ, popularityMQ)
+	commentService := usecase.NewCommentService(accountRepository, commentRepository, videoRepository, cache, commentMQ, popularityMQ, llm)
 	commentHandler := handler.NewCommentHandler(commentService, accountService)
 	commentGroup := r.Group("/comment")
 	{
+		commentGroup.POST("/AiSummary", jwt.JWTAuth(accountRepository, cache), aiSummaryLimiter, commentHandler.AiSummary)
 		commentGroup.POST("/listAll", commentHandler.GetAllComments)
 	}
 	protectedCommentGroup := commentGroup.Group("")

@@ -51,6 +51,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// GenerateToken Token生成
 func GenerateToken(accountID uint, username string) (string, error) {
 	now := time.Now()
 

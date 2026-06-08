@@ -17,6 +17,9 @@ type PublishCommentRequest struct {
 	Content string `json:"content"`
 }
 
+type AiSummaryResponse struct {
+	Rep string `json:"AiSummaryResponse"`
+}
 type DeleteCommentRequest struct {
 	CommentID uint `json:"comment_id"`
 }

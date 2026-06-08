@@ -17,8 +17,9 @@
 - [ ] AI接入总结
 - [x] 后台管理接入
 - [ ] 管理员视频删除功能
+## 项目结构改良
 - [ ] 接口抽取（minio，captcha，smtp）
-
+- [ ] DTO层抽取
 ## 项目结构
 
 ```text
@@ -46,8 +47,8 @@ renew_video/
 │   ├── observability/    # 性能监控与 pprof
 │   ├── rabbitmq/         # RabbitMQ 连接与死信队列封装
 │   ├── ratelimit/        # 接口限流组件
-│   └── redis/            # Redis 缓存与 ZSet 操作封装
-│
+│   ├── redis/            # Redis 缓存与 ZSet 操作封装
+│   └── SMTP/             # 验证码生成，邮件收发
 ├── go.mod                # Go 模块依赖
 ├── go.sum                # Go 依赖锁定文件
 └── README.md             # 项目说明文档
@@ -63,6 +64,7 @@ go run app\main.go
 ```
 go run worker\main.go 
 ```
+中间件的增加统一在app\main.go中进行注册，在usecase层中进行相关调用
 ## 后端部署指引
 
 本地打包dist,分别在cmd/app，cmd/worker下执行

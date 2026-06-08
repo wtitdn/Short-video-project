@@ -12,6 +12,7 @@ import (
 	"github.com/wtitdn/renew_video/internal/controller/http"
 	"github.com/wtitdn/renew_video/internal/db"
 	"github.com/wtitdn/renew_video/internal/middleware/auth"
+	llm2 "github.com/wtitdn/renew_video/internal/middleware/llm"
 	smtp "github.com/wtitdn/renew_video/pkg/SMTP"
 	storage "github.com/wtitdn/renew_video/pkg/minio"
 	"github.com/wtitdn/renew_video/pkg/observability"
@@ -79,7 +80,14 @@ func main() {
 		defer mio.Close()
 		log.Printf("Minio connected")
 	}
-
+	// Initialize LLMClient
+	llm, err := llm2.NewClient(&cfg.ApiKeyConfig)
+	if err != nil {
+		log.Fatalf("Failed to create llm client: %v", err)
+	} else {
+		defer llm.Close()
+		log.Printf("llm initialized")
+	}
 	// Initialize RabbitMQ; disable message queue if it is unavailable.
 	rmq, err := rabbitmq.NewRabbitMQ(&cfg.RabbitMQ)
 	if err != nil {
@@ -111,7 +119,7 @@ func main() {
 	}
 
 	// Register routes and start HTTP server.
-	r := http.SetRouter(sqlDB, cache, rmq, mio, smt)
+	r := http.SetRouter(sqlDB, cache, rmq, mio, smt, llm)
 	log.Printf("Server is running on port %d", cfg.Server.Port)
 	if err := r.Run(":" + strconv.Itoa(cfg.Server.Port)); err != nil {
 		log.Fatalf("Failed to run server: %v", err)

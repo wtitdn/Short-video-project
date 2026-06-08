@@ -118,12 +118,15 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 	getCached := func() (*entity.Video, bool) {
 		opCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()
-
 		b, err := vs.cache.GetBytes(opCtx, cacheKey)
 		if err != nil {
 			return nil, false
 		}
 		var cached entity.Video
+		cached.CoverURL, err = vs.minioRepo.PresignedGetURL(ctx, "videosys", cached.CoverURL, 24*time.Second)
+		if err != nil {
+			return nil, false
+		}
 		if err := json.Unmarshal(b, &cached); err != nil {
 			return nil, false
 		}
@@ -153,6 +156,7 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 			if err := json.Unmarshal(b, &cached); err == nil {
 				return &cached, nil
 			}
+			//缓存未命中，加锁，去访问DB
 		} else if rediscache.IsMiss(err) {
 			lockKey := "lock:" + cacheKey
 
@@ -162,7 +166,7 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 
 			if lockErr == nil && locked {
 				defer func() { _ = vs.cache.Unlock(context.Background(), lockKey, token) }()
-
+				//
 				if v, ok := getCached(); ok {
 					return v, nil
 				}
@@ -177,6 +181,7 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 
 			// 没拿到锁：等待别人回填缓存
 			for i := 0; i < 5; i++ {
+				//每过20ms 请求一次redis，如果有就结束
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
@@ -188,7 +193,12 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 			}
 		}
 	}
+	//兜底逻辑
 	video, err := vs.repo.GetByID(ctx, id)
+	video.CoverURL, err = vs.minioRepo.PresignedGetURL(ctx, "videosys", video.CoverURL, 24*time.Second)
+	if err != nil {
+		return nil, err
+	}
 	if err != nil {
 		return nil, err
 	}

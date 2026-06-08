@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"strings"
 
 	"github.com/wtitdn/renew_video/internal/entity"
 	"github.com/wtitdn/renew_video/internal/middleware/rabbitmq/producer"
@@ -120,22 +119,18 @@ func (s *SocialService) fillAvatarURLs(ctx context.Context, accounts []*entity.A
 		return
 	}
 	for _, account := range accounts {
-		if account == nil || account.AvatarURL == "" || isExternalAvatarURL(account.AvatarURL) {
+		if account == nil || account.AvatarURL == "" {
 			continue
 		}
-		avatarURL, err := s.minioRepo.PresignedGetURL(ctx, avatarBucket, account.AvatarURL, avatarExpiry)
+		objectKey, ok := avatarObjectKey(account.AvatarURL)
+		if !ok {
+			continue
+		}
+		avatarURL, err := s.minioRepo.PresignedGetURL(ctx, avatarBucket, objectKey, avatarExpiry)
 		if err != nil {
 			log.Printf("failed to presign avatar %q: %v", account.AvatarURL, err)
 			continue
 		}
 		account.AvatarURL = avatarURL
 	}
-}
-
-func isExternalAvatarURL(value string) bool {
-	lower := strings.ToLower(strings.TrimSpace(value))
-	return strings.HasPrefix(lower, "http://") ||
-		strings.HasPrefix(lower, "https://") ||
-		strings.HasPrefix(lower, "data:") ||
-		strings.HasPrefix(lower, "blob:")
 }

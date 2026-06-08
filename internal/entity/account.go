@@ -6,9 +6,10 @@ type Account struct {
 	Password     string `json:"-"`
 	Token        string `json:"-"`
 	RefreshToken string `json:"-"`
-	AvatarURL    string `gorm:"type:varchar(512)" json:"avatar_url,omitempty"`
-	Bio          string `gorm:"type:varchar(255)" json:"bio,omitempty"`
-	Email        string `gorm:"type:varchar(255)" json:"email,omitempty"`
+	//同样的 ，这里存的也是objectkey
+	AvatarURL string `gorm:"type:varchar(512)" json:"avatar_url,omitempty"`
+	Bio       string `gorm:"type:varchar(255)" json:"bio,omitempty"`
+	Email     string `gorm:"type:varchar(255)" json:"email,omitempty"`
 }
 
 // DTO

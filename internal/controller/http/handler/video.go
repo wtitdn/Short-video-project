@@ -53,7 +53,7 @@ func (vh *VideoHandler) PublishVideo(c *gin.Context) {
 		Title:       req.Title,
 		Description: req.Description,
 		PlayURL:     req.PlayURL,
-		CoverURL:    req.CoverURL,
+		CoverURL:    req.CoverObjectKey,
 		CreateTime:  time.Now(),
 	}
 	if err := vh.service.Publish(c.Request.Context(), video); err != nil {
@@ -217,7 +217,9 @@ func (vh *VideoHandler) UploadCover(c *gin.Context) {
 		"cover_url":  coverURL,
 	})
 }
+func (vh *VideoHandler) EditVideo(c *gin.Context) {
 
+}
 func (vh *VideoHandler) InitChunkUpload(c *gin.Context) {
 	if vh.minioRepo == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "minio is not available"})

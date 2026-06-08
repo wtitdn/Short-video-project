@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -203,7 +204,7 @@ func (as *AccountService) Login(ctx context.Context, username, password string) 
 		cacheCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()
 
-		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d:token", account.ID), []byte(accessToken), 24*time.Hour); err != nil {
+		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d", account.ID), []byte(accessToken), 24*time.Hour); err != nil {
 			log.Printf("failed to set cache: %v", err)
 		}
 		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d:refreshToken", account.ID), []byte(refreshToken), 7*24*time.Hour); err != nil {
@@ -298,15 +299,43 @@ func (as *AccountService) fillAvatarURL(ctx context.Context, account *entity.Acc
 	if account == nil || account.AvatarURL == "" || as.minioRepo == nil {
 		return
 	}
-	if isExternalURL(account.AvatarURL) {
+
+	objectKey, ok := avatarObjectKey(account.AvatarURL)
+	if !ok {
 		return
 	}
-	avatarURL, err := as.minioRepo.PresignedGetURL(ctx, avatarBucket, account.AvatarURL, avatarExpiry)
+
+	avatarURL, err := as.minioRepo.PresignedGetURL(ctx, avatarBucket, objectKey, avatarExpiry)
 	if err != nil {
 		log.Printf("failed to presign avatar %q: %v", account.AvatarURL, err)
 		return
 	}
 	account.AvatarURL = avatarURL
+}
+
+func avatarObjectKey(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	if strings.HasPrefix(value, avatarBucket+"/") {
+		return strings.TrimPrefix(value, avatarBucket+"/"), true
+	}
+	if strings.HasPrefix(value, "avatars/") {
+		return value, true
+	}
+	if u, err := url.Parse(value); err == nil && u.IsAbs() {
+		path := strings.TrimPrefix(u.EscapedPath(), "/")
+		path, _ = url.PathUnescape(path)
+		if strings.HasPrefix(path, avatarBucket+"/") {
+			return strings.TrimPrefix(path, avatarBucket+"/"), true
+		}
+		if strings.HasPrefix(path, "avatars/") {
+			return path, true
+		}
+		return "", false
+	}
+	return value, true
 }
 
 func isExternalURL(value string) bool {
@@ -335,8 +364,14 @@ func (as *AccountService) RefreshAccessToken(ctx context.Context, refreshToken s
 					if err != nil {
 						return "", 0, "", err
 					}
-					as.accountRepository.UpdateToken(ctx, account.ID, newToken)
-					as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d", account.ID), []byte(newToken), 24*time.Hour)
+					if err := as.accountRepository.UpdateToken(ctx, account.ID, newToken); err != nil {
+						return "", 0, "", err
+					}
+					setCtx, setCancel := context.WithTimeout(ctx, 50*time.Millisecond)
+					if err := as.cache.SetBytes(setCtx, as.cache.Key("account:%d", account.ID), []byte(newToken), 24*time.Hour); err != nil {
+						log.Printf("failed to set refreshed token cache: %v", err)
+					}
+					setCancel()
 					return newToken, account.ID, account.Username, nil
 				}
 			}
@@ -352,7 +387,16 @@ func (as *AccountService) RefreshAccessToken(ctx context.Context, refreshToken s
 			if err != nil {
 				return "", 0, "", err
 			}
-			as.accountRepository.UpdateToken(ctx, acc.ID, newToken)
+			if err := as.accountRepository.UpdateToken(ctx, acc.ID, newToken); err != nil {
+				return "", 0, "", err
+			}
+			if as.cache != nil {
+				setCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+				if err := as.cache.SetBytes(setCtx, as.cache.Key("account:%d", acc.ID), []byte(newToken), 24*time.Hour); err != nil {
+					log.Printf("failed to set refreshed token cache: %v", err)
+				}
+				cancel()
+			}
 			return newToken, acc.ID, acc.Username, nil
 		}
 	}

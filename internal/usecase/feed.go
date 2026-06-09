@@ -23,6 +23,7 @@ type FeedService struct {
 	rediscache   *rediscache.Client
 	localcache   *cache.Cache
 	cacheTTL     time.Duration
+	minioRepo    *repo.MinioRepository
 	requestGroup singleflight.Group
 }
 
@@ -30,8 +31,8 @@ type CachedFeedData struct {
 	PublicVideos []entity.Video `json:"public_videos"`
 }
 
-func NewFeedService(rep *repo.FeedRepository, likeRepo *repo.LikeRepository, rediscache *rediscache.Client) *FeedService {
-	return &FeedService{repo: rep, likeRepo: likeRepo, rediscache: rediscache, localcache: cache.New(3*time.Second, 5*time.Second), cacheTTL: 24 * time.Hour}
+func NewFeedService(rep *repo.FeedRepository, likeRepo *repo.LikeRepository, rediscache *rediscache.Client, minioRepo *repo.MinioRepository) *FeedService {
+	return &FeedService{repo: rep, likeRepo: likeRepo, rediscache: rediscache, localcache: cache.New(3*time.Second, 5*time.Second), cacheTTL: 24 * time.Hour, minioRepo: minioRepo}
 }
 
 func (f *FeedService) GetVideoByIDs(ctx context.Context, videoIDs []uint) ([]*entity.Video, error) {
@@ -352,6 +353,7 @@ func (f *FeedService) ListByFollowing(ctx context.Context, limit int, latestBefo
 		if err == nil {
 			var cached entity.ListByFollowingResponse
 			if err := json.Unmarshal(b, &cached); err == nil {
+				f.fillFeedCoverURLs(ctx, cached.VideoList)
 				return cached, nil
 			}
 		} else if rediscache.IsMiss(err) { // 缓存未命中
@@ -363,6 +365,7 @@ func (f *FeedService) ListByFollowing(ctx context.Context, limit int, latestBefo
 				if b, err := f.rediscache.GetBytes(cacheCtx, cacheKey); err == nil {
 					var cached entity.ListByFollowingResponse
 					if err := json.Unmarshal(b, &cached); err == nil {
+						f.fillFeedCoverURLs(ctx, cached.VideoList)
 						return cached, nil
 					}
 				} else { // 缓存未命中，从数据库中查询
@@ -381,6 +384,7 @@ func (f *FeedService) ListByFollowing(ctx context.Context, limit int, latestBefo
 					if b, err := f.rediscache.GetBytes(cacheCtx, cacheKey); err == nil {
 						var cached entity.ListByFollowingResponse
 						if err := json.Unmarshal(b, &cached); err == nil {
+							f.fillFeedCoverURLs(ctx, cached.VideoList)
 							return cached, nil
 						}
 					}
@@ -522,19 +526,42 @@ func (f *FeedService) buildFeedVideos(ctx context.Context, videos []*entity.Vide
 		return nil, err
 	}
 	for _, video := range videos {
+		coverURL := f.coverURL(ctx, video.CoverURL)
 		feedVideos = append(feedVideos, entity.FeedVideoItem{
 			ID:          video.ID,
 			Author:      entity.FeedAuthor{ID: video.AuthorID, Username: video.Username},
 			Title:       video.Title,
 			Description: video.Description,
 			PlayURL:     video.PlayURL,
-			CoverURL:    video.CoverURL,
+			CoverURL:    coverURL,
 			CreateTime:  video.CreateTime.Unix(),
 			LikesCount:  video.LikesCount,
 			IsLiked:     likedMap[video.ID],
 		})
 	}
 	return feedVideos, nil
+}
+
+func (f *FeedService) coverURL(ctx context.Context, value string) string {
+	if value == "" || f.minioRepo == nil {
+		return value
+	}
+	objectKey, ok := videoObjectKey(value, "covers/")
+	if !ok {
+		return value
+	}
+	coverURL, err := f.minioRepo.PresignedGetURL(ctx, videoObjectBucket, objectKey, videoObjectExpiry)
+	if err != nil {
+		log.Printf("failed to presign feed cover %q: %v", value, err)
+		return value
+	}
+	return coverURL
+}
+
+func (f *FeedService) fillFeedCoverURLs(ctx context.Context, videos []entity.FeedVideoItem) {
+	for i := range videos {
+		videos[i].CoverURL = f.coverURL(ctx, videos[i].CoverURL)
+	}
 }
 
 func buildOrderedResult(orderedIDs []uint, dataMap map[uint]*entity.Video) []*entity.Video {

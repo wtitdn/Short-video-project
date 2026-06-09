@@ -72,7 +72,7 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 		log.Printf("PopularityMQ init failed (mq disabled): %v", err)
 		popularityMQ = nil
 	}
-	videoService := usecase.NewVideoService(videoRepository, cache, popularityMQ)
+	videoService := usecase.NewVideoService(videoRepository, cache, popularityMQ, minioRepository)
 	videoHandler := handler.NewVideoHandler(videoService, accountService, minioRepository)
 	videoGroup := r.Group("/video")
 	{
@@ -177,7 +177,7 @@ func SetRouter(db *gorm.DB, cache *rediscache.Client, rmq *rabbitmq.RabbitMQ, mi
 	})
 	// feed
 	feedRepository := repo.NewFeedRepository(db)
-	feedService := usecase.NewFeedService(feedRepository, likeRepository, cache)
+	feedService := usecase.NewFeedService(feedRepository, likeRepository, cache, minioRepository)
 	feedHandler := handler.NewFeedHandler(feedService)
 	feedGroup := r.Group("/feed")
 	feedGroup.Use(jwt.SoftJWTAuth(accountRepository, cache))

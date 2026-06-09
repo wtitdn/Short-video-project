@@ -47,13 +47,17 @@ func (vh *VideoHandler) PublishVideo(c *gin.Context) {
 		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
 		return
 	}
+	coverObject := req.CoverObjectKey
+	if coverObject == "" {
+		coverObject = req.CoverURL
+	}
 	video := &entity.Video{
 		AuthorID:    authorId,
 		Username:    username,
 		Title:       req.Title,
 		Description: req.Description,
 		PlayURL:     req.PlayURL,
-		CoverURL:    req.CoverObjectKey,
+		CoverURL:    coverObject,
 		CreateTime:  time.Now(),
 	}
 	if err := vh.service.Publish(c.Request.Context(), video); err != nil {

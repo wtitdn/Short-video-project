@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +18,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	videoObjectBucket = "videosys"
+	videoObjectExpiry = 24 * time.Hour
+)
+
 type VideoService struct {
 	repo         *repo.VideoRepository
 	cache        *rediscache.Client
@@ -24,8 +31,8 @@ type VideoService struct {
 	minioRepo    *repo.MinioRepository
 }
 
-func NewVideoService(repo *repo.VideoRepository, cache *rediscache.Client, popularityMQ *producer.PopularityMQ) *VideoService {
-	return &VideoService{repo: repo, cache: cache, cacheTTL: 3 * time.Minute, popularityMQ: popularityMQ}
+func NewVideoService(repo *repo.VideoRepository, cache *rediscache.Client, popularityMQ *producer.PopularityMQ, minioRepo *repo.MinioRepository) *VideoService {
+	return &VideoService{repo: repo, cache: cache, cacheTTL: 3 * time.Minute, popularityMQ: popularityMQ, minioRepo: minioRepo}
 }
 
 func (vs *VideoService) Publish(ctx context.Context, video *entity.Video) error {
@@ -35,6 +42,9 @@ func (vs *VideoService) Publish(ctx context.Context, video *entity.Video) error 
 	video.Title = strings.TrimSpace(video.Title)
 	video.PlayURL = strings.TrimSpace(video.PlayURL)
 	video.CoverURL = strings.TrimSpace(video.CoverURL)
+	if objectKey, ok := videoObjectKey(video.CoverURL, "covers/"); ok {
+		video.CoverURL = objectKey
+	}
 
 	if video.Title == "" {
 		return errors.New("title is required")
@@ -71,6 +81,9 @@ func (vs *VideoService) Publish(ctx context.Context, video *entity.Video) error 
 		}
 		return nil
 	})
+	if err == nil {
+		vs.fillCoverURL(ctx, video)
+	}
 	return err
 
 }
@@ -92,8 +105,8 @@ func (vs *VideoService) Delete(ctx context.Context, id uint, authorID uint) erro
 	}
 
 	if vs.minioRepo != nil {
-		_ = vs.minioRepo.RemoveObject(ctx, "videosys", video.PlayURL)
-		_ = vs.minioRepo.RemoveObject(ctx, "imagesys", video.CoverURL)
+		_ = vs.minioRepo.RemoveObject(ctx, videoObjectBucket, video.PlayURL)
+		_ = vs.minioRepo.RemoveObject(ctx, videoObjectBucket, video.CoverURL)
 	}
 
 	if vs.cache != nil {
@@ -109,6 +122,9 @@ func (vs *VideoService) ListByAuthorID(ctx context.Context, authorID uint) ([]en
 	if err != nil {
 		return nil, err
 	}
+	for i := range videos {
+		vs.fillCoverURL(ctx, &videos[i])
+	}
 	return videos, nil
 }
 
@@ -123,13 +139,10 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 			return nil, false
 		}
 		var cached entity.Video
-		cached.CoverURL, err = vs.minioRepo.PresignedGetURL(ctx, "videosys", cached.CoverURL, 24*time.Second)
-		if err != nil {
-			return nil, false
-		}
 		if err := json.Unmarshal(b, &cached); err != nil {
 			return nil, false
 		}
+		vs.fillCoverURL(ctx, &cached)
 		return &cached, true
 	}
 
@@ -154,6 +167,7 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 		if err == nil {
 			var cached entity.Video
 			if err := json.Unmarshal(b, &cached); err == nil {
+				vs.fillCoverURL(ctx, &cached)
 				return &cached, nil
 			}
 			//缓存未命中，加锁，去访问DB
@@ -176,6 +190,7 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 					return nil, err
 				}
 				setCached(video)
+				vs.fillCoverURL(ctx, video)
 				return video, nil
 			}
 
@@ -195,18 +210,59 @@ func (vs *VideoService) GetDetail(ctx context.Context, id uint) (*entity.Video, 
 	}
 	//兜底逻辑
 	video, err := vs.repo.GetByID(ctx, id)
-	video.CoverURL, err = vs.minioRepo.PresignedGetURL(ctx, "videosys", video.CoverURL, 24*time.Second)
-	if err != nil {
-		return nil, err
-	}
 	if err != nil {
 		return nil, err
 	}
 	if vs.cache != nil {
 		setCached(video)
 	}
+	vs.fillCoverURL(ctx, video)
 	return video, nil
 }
+
+func (vs *VideoService) fillCoverURL(ctx context.Context, video *entity.Video) {
+	if video == nil || video.CoverURL == "" || vs.minioRepo == nil {
+		return
+	}
+	objectKey, ok := videoObjectKey(video.CoverURL, "covers/")
+	if !ok {
+		return
+	}
+	coverURL, err := vs.minioRepo.PresignedGetURL(ctx, videoObjectBucket, objectKey, videoObjectExpiry)
+	if err != nil {
+		log.Printf("failed to presign video cover %q: %v", video.CoverURL, err)
+		return
+	}
+	video.CoverURL = coverURL
+}
+
+func videoObjectKey(value, objectPrefix string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	if strings.HasPrefix(value, videoObjectBucket+"/") {
+		key := strings.TrimPrefix(value, videoObjectBucket+"/")
+		return key, strings.HasPrefix(key, objectPrefix)
+	}
+	if strings.HasPrefix(value, objectPrefix) {
+		return value, true
+	}
+	if u, err := url.Parse(value); err == nil && u.IsAbs() {
+		path := strings.TrimPrefix(u.EscapedPath(), "/")
+		path, _ = url.PathUnescape(path)
+		if strings.HasPrefix(path, videoObjectBucket+"/") {
+			key := strings.TrimPrefix(path, videoObjectBucket+"/")
+			return key, strings.HasPrefix(key, objectPrefix)
+		}
+		if strings.HasPrefix(path, objectPrefix) {
+			return path, true
+		}
+		return "", false
+	}
+	return value, true
+}
+
 func (vs *VideoService) UpdateLikesCount(ctx context.Context, id uint, likesCount int64) error {
 	if err := vs.repo.UpdateLikesCount(ctx, id, likesCount); err != nil {
 		return err
